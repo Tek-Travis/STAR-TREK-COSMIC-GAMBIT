@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>STAR TREK COSMIC GAMBIT</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app-container">
+    <!-- TOP TACTICAL HUD BAR -->
+    <header id="hud-header">
+      <!-- Left: Title & Turn Status -->
+      <div class="hud-group">
+        <div class="title-badge">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span class="long-name">STAR TREK COSMIC GAMBIT</span>
+          <span class="short-name" style="display:none;">ARMADA</span>
+        </div>
+
+        <div id="turn-pill" class="turn-pill">
+          <span class="turn-dot"></span>
+          <span id="turn-text">YOUR TURN</span>
+        </div>
+
+        <div id="check-alert" class="check-indicator">
+          <span>⚠️</span> CHECK!
+        </div>
+      </div>
+
+      <!-- Center: Score & Captured Units -->
+      <div class="hud-group">
+        <div class="score-badge">
+          <span>🏆</span>
+          <span id="score-val">SCORE: 0</span>
+        </div>
+
+        <div class="captured-stats">
+          <span>Captured:</span>
+          <span id="white-cap-count" class="white-cap">0</span>
+          <span>vs</span>
+          <span id="black-cap-count" class="black-cap">0</span>
+        </div>
+      </div>
+
+      <!-- Right: Controls, Volume, Difficulty, Actions -->
+      <div class="hud-group">
+        <!-- Skip Battle Button -->
+        <button id="skip-btn" class="hud-btn skip-btn" style="display:none;" title="Skip Battle Skirmish (Spacebar)">
+          <span>⏩</span>
+          <span>Skip</span>
+        </button>
+
+        <!-- Master Volume Control -->
+        <div class="volume-control">
+          <button id="mute-btn" class="mute-btn" title="Toggle Mute">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+            </svg>
+          </button>
+          <input id="volume-slider" class="volume-slider" type="range" min="0" max="100" value="65" title="Master Volume" />
+        </div>
+
+        <!-- AI Tactical Level Selector -->
+        <div class="ai-selector">
+          <span>AI:</span>
+          <button class="ai-btn" data-level="1">Cadet</button>
+          <button class="ai-btn active" data-level="2">Cmdr</button>
+          <button class="ai-btn" data-level="3">Adm</button>
+        </div>
+
+        <!-- Save / Load Deployment Buttons -->
+        <button id="save-btn" class="hud-btn" title="Save Fleet Deployment State">
+          <span>💾</span>
+          <span>Save</span>
+        </button>
+        <button id="load-btn" class="hud-btn" title="Load Fleet Deployment State">
+          <span>📂</span>
+          <span>Load</span>
+        </button>
+        <button id="undo-btn" class="hud-btn" title="Undo Last Tactical Move">
+          <span>↺</span>
+          <span>Undo</span>
+        </button>
+
+        <!-- New Game -->
+        <button id="new-game-btn" class="hud-btn primary" title="Deploy New Cosmic Match">
+          <span>⚡</span>
+          <span>New Game</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- FULLSCREEN RESPONSIVE CHESSBOARD ARENA -->
+    <main id="arena">
+      <div id="board-container">
+        <!-- Coordinate Gutters -->
+        <div class="coord-gutter-top">
+          <span>A</span><span>B</span><span>C</span><span>D</span><span>E</span><span>F</span><span>G</span><span>H</span>
+        </div>
+        <div class="coord-gutter-bottom">
+          <span>A</span><span>B</span><span>C</span><span>D</span><span>E</span><span>F</span><span>G</span><span>H</span>
+        </div>
+        <div class="coord-gutter-left">
+          <span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span>
+        </div>
+        <div class="coord-gutter-right">
+          <span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span>
+        </div>
+
+        <!-- 8x8 Pure DOM Chessboard Grid -->
+        <div id="chess-grid"></div>
+
+        <!-- Floating Overlay Canvas for Beams, Torpedoes, and Glides -->
+        <canvas id="fx-canvas"></canvas>
+      </div>
+    </main>
+
+    <!-- FOOTER STATUS BAR -->
+    <footer id="hud-footer">
+      <div>
+        <span class="highlight">White: Stellar Coalition</span>
+        <span> • </span>
+        <span style="color:#ef4444;">Black: Tactical AI</span>
+        <span> • </span>
+        <span id="moves-count">Moves: 0</span>
+        <span> • </span>
+        <span id="square-px">Square: ~80px</span>
+      </div>
+      <div>
+        <span class="highlight">Spacebar to Skip Combat</span>
+        <span> • Standard Chess Rules</span>
+      </div>
+    </footer>
+
+    <!-- PAWN PROMOTION MODAL -->
+    <div id="promo-modal" class="modal-backdrop" style="display:none;">
+      <div class="modal-dialog">
+        <h2 class="modal-title">PROMOTE SCOUT CORVETTE</h2>
+        <p class="modal-desc">Select upgraded capital starship specification:</p>
+        <div class="promo-grid">
+          <button class="promo-option" data-piece="q">
+            <span class="promo-glyph">♕</span>
+            <div class="promo-details">
+              <span class="promo-name">QUEEN</span>
+              <span class="promo-sub">Armada Flagship</span>
+            </div>
+          </button>
+          <button class="promo-option" data-piece="r">
+            <span class="promo-glyph">♖</span>
+            <div class="promo-details">
+              <span class="promo-name">ROOK</span>
+              <span class="promo-sub">Heavy Battlecruiser</span>
+            </div>
+          </button>
+          <button class="promo-option" data-piece="b">
+            <span class="promo-glyph">♗</span>
+            <div class="promo-details">
+              <span class="promo-name">BISHOP</span>
+              <span class="promo-sub">Cruiser Frigate</span>
+            </div>
+          </button>
+          <button class="promo-option" data-piece="n">
+            <span class="promo-glyph">♘</span>
+            <div class="promo-details">
+              <span class="promo-name">KNIGHT</span>
+              <span class="promo-sub">Interceptor Destroyer</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- START SCREEN MODAL -->
+    <div id="start-modal" class="modal-backdrop">
+      <div class="modal-dialog">
+        <h1 class="modal-title">STAR TREK COSMIC GAMBIT</h1>
+        <p class="modal-desc">
+          Command your fleet against the tactical AI on an 8x8 cosmic chessboard.
+          Features standard chess rules, castling, en passant, tactical battle animations, and audio. Star Trek and all related properties are trademarks and copyrights of Paramount Skydance Corporation and CBS Studios Inc. All Rights Reserved. Unofficial, non-commercial fan project.
+        </p>
+        <button id="start-action-btn" class="modal-action-btn">
+          <span>🚀</span>
+          <span>ENGAGE</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- GAME OVER MODAL -->
+    <div id="game-over-modal" class="modal-backdrop" style="display:none;">
+      <div class="modal-dialog danger">
+        <h1 id="game-over-title" class="modal-title">FLAGSHIP DESTROYED</h1>
+        <p id="game-over-desc" class="modal-desc">Your Fleet has been Defeated.</p>
+        <button id="retry-action-btn" class="modal-action-btn" style="background:#b91c1c; border-color:#ef4444;">
+          <span>↺</span>
+          <span>TRY AGAIN</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- VICTORY MODAL -->
+    <div id="victory-modal" class="modal-backdrop" style="display:none;">
+      <div class="modal-dialog victory">
+        <h1 class="modal-title">VICTORY - ENEMY CHECKMATE</h1>
+        <p id="victory-score" class="modal-desc">The Enemy Fleet been Destroyed !</p>
+        <button id="victory-action-btn" class="modal-action-btn" style="background:#059669; border-color:#10b981;">
+          <span>⭐</span>
+          <span>PLAY AGAIN</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STANDALONE MODULAR VANILLA SCRIPTS (Zero CORS issues, works offline and via file://) -->
+  <script src="./audio.js"></script>
+  <script src="./chess.js"></script>
+  <script src="./battle.js"></script>
+  <script src="./main.js"></script>
+</body>
+</html>

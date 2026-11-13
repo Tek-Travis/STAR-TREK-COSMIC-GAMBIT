@@ -1,0 +1,76 @@
+{
+  "schema": [
+    {
+      "name": "aiDifficulty",
+      "type": "number",
+      "label": "AI Tactical Level",
+      "default": 2,
+      "min": 1,
+      "max": 3,
+      "step": 1
+    },
+    {
+      "name": "battleDuration",
+      "type": "number",
+      "label": "Battle Salvo Duration (s)",
+      "default": 5.5,
+      "min": 2,
+      "max": 10,
+      "step": 0.5
+    },
+    {
+      "name": "laserVolleys",
+      "type": "number",
+      "label": "Beam Volleys",
+      "default": 4,
+      "min": 1,
+      "max": 8,
+      "step": 1
+    },
+    {
+      "name": "torpedoVolleys",
+      "type": "number",
+      "label": "Torpedo Volleys",
+      "default": 3,
+      "min": 0,
+      "max": 6,
+      "step": 1
+    },
+    {
+      "name": "cameraShakeIntensity",
+      "type": "number",
+      "label": "Impact Shake Intensity",
+      "default": 12,
+      "min": 0,
+      "max": 30,
+      "step": 2
+    },
+    {
+      "name": "defaultMusicVolume",
+      "type": "number",
+      "label": "Default Music Volume",
+      "default": 0.45,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "name": "defaultSfxVolume",
+      "type": "number",
+      "label": "Default SFX Volume",
+      "default": 0.65,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    }
+  ],
+  "values": {
+    "aiDifficulty": 2,
+    "battleDuration": 5.5,
+    "laserVolleys": 4,
+    "torpedoVolleys": 3,
+    "cameraShakeIntensity": 12,
+    "defaultMusicVolume": 0.45,
+    "defaultSfxVolume": 0.65
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "title": "Star Trek Battle Gambit",
+  "hook": "Streamlined cosmic starship chess skirmish",
+  "game_overview": "A streamlined top-down sci-fi chess game with full chess rules, local computer AI, volume control, and customizable transparent piece sprites.",
+  "artstyle": "modern-vector",
+  "genre": "board_card",
+  "winning_condition": "Checkmate the enemy Commander Flagship or force the opponent into surrender.",
+  "losing_condition": "Your Commander Flagship is placed in inescapable checkmate.",
+  "player_mode": "single_player",
+  "supported_orientations": [
+    "landscape",
+    "square",
+    "any"
+  ],
+  "input_methods": [
+    "mouse",
+    "touch",
+    "keyboard"
+  ],
+  "score_options": {
+    "score_type": "points",
+    "score_order": "higher_is_better"
+  },
+  "low_end_device_support": true,
+  "mobile_playable": true,
+  "tv_playable": false,
+  "language": [
+    "en"
+  ],
+  "content_descriptors": [],
+  "controls": [
+    {
+      "input": "Left Mouse Click / Tap",
+      "action": "Select piece or destination square on the board."
+    },
+    {
+      "input": "Spacebar / Skip Button",
+      "action": "Skip active engagement flight and combat animation."
+    },
+    {
+      "input": "Escape / Menu Button",
+      "action": "Open in-game tactical settings, theme selector, and engagement profile editor."
+    },
+    {
+      "input": "U Key / Undo Button",
+      "action": "Undo the most recent turn move in single-player mode."
+    }
+  ],
+  "sections": [
+    {
+      "title": "Design Pillars",
+      "content": "1. Authoritative Chess Rules: Full fidelity standard 8x8 chess adherence (castling, en passant, promotion, checkmate, stalemate, 50-move rule, three-fold repetition). 2. Cinematic Tactical Skirmish: Every piece move glides smoothly across the vacuum; captures initiate high-octane 5-10 second naval engagements with customizable beam and torpedo volleys before claiming territory. 3. Deep Customization & Moddability: Independent faction themes (Generic, Stellar Coalition, Cyber Collective, Obsidian Union, Crimson Legion, Shadow Enclave), editable per-class engagement profiles, and hot-swappable transparent sprite tokens.",
+      "summary": "Core foundational philosophies of the cosmic starship chess game."
+    },
+    {
+      "title": "Core Loop",
+      "content": "1. Evaluate Board: Inspect piece positioning, threat lanes, and legal move indicators. 2. Select & Order: Click/tap a starship piece to display glowing tactical trajectory hexes; select valid destination. 3. Execution: Normal moves trigger smooth warp-glide animation. Captures trigger a dedicated 5-10 second engagement sequence (approach vector, beam/torpedo weapon salvos, shield-break explosion particle VFX, followed by arrival at the destination square). 4. Turn Handover: Local heuristic AI evaluates board position (material + positional heatmaps) and replies. Loop continues until checkmate, draw, or stalemate.",
+      "summary": "The turn-based tactical loop between human commander and AI."
+    },
+    {
+      "title": "Core Mechanics",
+      "content": "1. Authoritative Chess Engine: Complete rulebook validation with move generation, in-check calculation, king path verification, en passant capture flags, and queen/rook/bishop/knight promotion selector modals. 2. Engagement Profile Engine: Per-class engagement timing (approach speed, standoff distance, weapon salvo count, beam color, torpedo frequency, explosion radius). Captures are legally guaranteed with no RNG or hit-point attrition. 3. Theme & Asset Replacement System: Independent White/Black side selectors supporting 6 distinct faction themes. Replacing one class asset instantly propagates to all matching pieces of that theme. Procedural SVG/Canvas fallbacks guarantee 100% visual uptime. 4. Animation Decoupling: Authoritative game state updates cleanly while animation runners handle visual playback with instant skip capability.",
+      "summary": "Game systems, rule enforcement, and modular starship profiles."
+    },
+    {
+      "title": "Movement & Scrolling Alignment",
+      "content": "Scrolling Axis: Multi-Directional / Static Viewport (Zero scrolling). The 8x8 galactic grid fills the primary visual canvas. Asset Orientation: Overhead planar orientation with ships facing forward (3 o'clock / East by default) and rotating via smooth atan2 angular interpolation towards flight vectors and target defenders during battle engagements. Movement Physics: Smooth ease-in-out cubic bezier interpolation for standard flight; orbital circling and standoff deceleration during battle skirmishes.",
+      "summary": "Fixed overhead spatial perspective and vector flight kinetics."
+    },
+    {
+      "title": "Visual Hierarchy & Layering",
+      "content": "Layer 1 (Background): Deep celestial space nebula backdrop with twinkling stars and subtle dust motes. Layer 2 (Grid Plane): Subtle translucent grid lines and coordinate labels (A-H, 1-8) with zero opaque square fills, ensuring the starfield remains visible. Layer 3 (Highlights): Pulsing cyan targeting rings for legal moves, gold rings for selected ships, and crimson warning glows for checks. Layer 4 (Fleet Entities): High-contrast ship tokens with colored faction rings and rank insignia. Layer 5 (VFX / Weapon Salvos): High-luminance reddish-orange energy lances, red plasma torpedoes, whitish-blue quantum torpedoes, and multi-particle explosions.",
+      "summary": "Layer plane separation and tactical clarity."
+    },
+    {
+      "title": "Characters & Enemies",
+      "content": "1. Pawn (Scout Corvette): Light, agile vanguard craft. 2. Knight (Interceptor Destroyer): Maneuverable flanking ship capable of hyper-jumping over obstacles. 3. Bishop (Cruiser Frigate): Long-range diagonal battery frigate. 4. Rook (Heavy Battlecruiser): Orthogonal dreadnought with heavy defensive bulk. 5. Queen (Armada Flagship): High-speed devastating capital warship dominating broad spatial lanes. 6. King (Command Citadel / Command Ship): Vital planetary command dreadnought whose fall concludes the campaign.",
+      "summary": "The six standard piece ranks transformed into armada classes."
+    },
+    {
+      "title": "Starship Battle Animation & Engagement Profiles",
+      "content": "When a capture occurs: 1. Approach: Attacker accelerates towards the defender, stopping at standoff range. 2. Salvo Sequence: Attacker aligns forward weapons and fires alternating reddish-orange pulse beams, red torpedoes, and whitish-blue quantum torpedoes. 3. Impact & Detonation: Defender flashes, emits plasma flare arcs, and explodes into glowing debris fragments with a cosmic shockwave ring. 4. Re-position: Attacker glides forward and locks onto the contested coordinate. A prominent 'Skip Animation' button or Spacebar press instantly concludes the battle sequence and updates the board.",
+      "summary": "5-10 second battle skirmish system and customizable weapon behaviors."
+    },
+    {
+      "title": "Fairness Tools & AI System",
+      "content": "1. Legal Move Radar: Highlighting valid moves, capture targets, and castling routes. 2. Threat & Check Indicators: Clear visual beacon on the king when in check. 3. Move History & PGN Log: Scrollable tactical notation sheet with undo/redo controls. 4. Local AI Opponent: Multi-tier heuristic evaluation (material balance, piece-square tables, pawn structure, king safety) running purely in local browser memory without network calls.",
+      "summary": "Player assistance overlays and heuristic local chess opponent."
+    },
+    {
+      "title": "Juice & Game Feel",
+      "content": "Anticipation Juice: Starships power up thrusters with glowing particle plumes upon selection. State Change Juice: Trajectory vector lines preview the planned route; board coordinate letters illuminate on hover. Impact Juice: Screen shake on torpedo detonations, radial shockwave rings, lingering wreckage motes, and crisp synthesized sci-fi sound effects for weapon discharges and warp drives.",
+      "summary": "Visual feedback, audio effects, and cosmetic impact."
+    },
+    {
+      "title": "Social Mechanics & Audience",
+      "content": "Designed for chess enthusiasts, sci-fi strategy gamers, and tactical tabletop fans. Supports Single-Player vs Local AI (Easy, Medium, Hard) as well as Pass-and-Play Local 2-Player mode.",
+      "summary": "Audience fit and game modes."
+    },
+    {
+      "title": "Accessibility & Save System",
+      "content": "High-contrast board outlines, text labels alongside ship icons, animation speed sliders (Instant, Fast, Cinematic), and full keyboard navigation. LocalStorage auto-saves game state, faction theme preferences, and custom engagement profiles across browser sessions.",
+      "summary": "Inclusive interface and persistent game state."
+    },
+    {
+      "title": "Structural Integrity",
+      "content": "Vite + React + TypeScript single-page application. Authoritative pure TypeScript chess rulebook engine cleanly decoupled from React view components and Canvas animation overlays. LocalStorage profile management for hot-swappable asset URLs and weapon timing curves.",
+      "summary": "Application architecture and state management."
+    },
+    {
+      "title": "Virtual Touch Controls Implementation",
+      "content": "Fully responsive 8x8 touch grid mapping with touch-none on interactive canvas elements, large tactile control buttons for Skip Animation, Undo, Settings, and Side Selection modals. Absolute positioned action bars with pointer-events-auto strictly on button elements.",
+      "summary": "Mobile touch support and responsive UI overlay."
+    }
+  ]
+}
