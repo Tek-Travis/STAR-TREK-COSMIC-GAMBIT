@@ -1,15 +1,13 @@
-// Cosmic Armada Gambit — integrated controller, smooth-battle edition.
-// Replace together with the matching battle.js. Existing faction registry is unchanged.
+// Cosmic Gambit controller — restored initialization and Stockfish integration.
 (function(global){
 'use strict';
-const MARKER_IMAGES={p:'./assets/images/marker_pawn.png',n:'./assets/images/marker_knight.png',b:'./assets/images/marker_bishop.png',r:'./assets/images/marker_rook.png',q:'./assets/images/marker_queen.png',k:'./assets/images/marker_king.png'};
+const MARKER_IMAGES=Object.fromEntries(['p','n','b','r','q','k'].map((t,i)=>[t,'./assets/images/marker_'+['pawn','knight','bishop','rook','queen','king'][i]+'.png']));
 const PIECE_GLYPHS={p:'♙',n:'♘',b:'♗',r:'♖',q:'♕',k:'♔'};
 const PIECE_NAMES={p:'PAWN',n:'KNIGHT',b:'BISHOP',r:'ROOK',q:'QUEEN',k:'KING'};
 const PIECE_TITLES={p:'Scout Corvette',n:'Interceptor Destroyer',b:'Cruiser Frigate',r:'Heavy Battlecruiser',q:'Armada Flagship',k:'Command Citadel Flagship'};
 const SCORE_VALUES={p:100,n:300,b:300,r:500,q:900,k:5000};
 const PREF_KEYS={w:'armada_player_fleet',b:'armada_enemy_fleet'};
-const SAVE_KEY='armada_fleet_save';
-const MAX_PIXEL_RATIO=2; // Bound high-density drawing cost; CSS ship sizes do not change.
+const SAVE_KEY='armada_fleet_save',MAX_PIXEL_RATIO=2;
 function getProceduralShipSvg(type,fleet){
  const primary=fleet.primary,accent=fleet.accent,hull=fleet.hull;
  const shapes={
@@ -32,45 +30,41 @@ function validateBasicState(state){
  return state;
 }
 function positionIdentity(state){return state.turn+':'+state.board.map(row=>row.map(p=>p?p.color+p.type:'--').join('')).join('/');}
+function sameMove(a,b){return a&&b&&a.from&&b.from&&a.to&&b.to&&a.from.r===b.from.r&&a.from.c===b.from.c&&a.to.r===b.to.r&&a.to.c===b.to.c&&(a.promotion||'')===(b.promotion||'');}
 class CosmicArmadaApp{
  constructor(){
   this.F=global.ArmadaFactions;this.E=global.ChessEngine;
-  if(!this.F||!['getFleet','getShip','normalizeFleetId','listFleets'].every(key=>typeof this.F[key]==='function'))throw Error('Missing or mismatched factions.js. Keep your working integrated faction registry.');
-  if(!this.E)throw Error('ChessEngine is missing. Check that your existing chess.js loaded.');
-  for(const name of ['createInitialState','makeMove','getLegalMovesForSquare','findBestMove','findKing'])if(typeof this.E[name]!=='function')throw Error(`ChessEngine.${name} is missing. Your chess.js interface needs checking.`);
+  if(!this.F||!['getFleet','getFleetById','getShip','normalizeFleetId','listFleets'].every(k=>typeof this.F[k]==='function'))throw Error('Missing or mismatched factions.js.');
+  if(!this.E)throw Error('ChessEngine is missing. Check chess.js.');
+  for(const name of ['createInitialState','makeMove','getLegalMoves','getLegalMovesForSquare','findBestMove','findKing','toFEN'])if(typeof this.E[name]!=='function')throw Error(`ChessEngine.${name} is missing.`);
   if(typeof global.BattleEngine!=='function')throw Error('BattleEngine is missing. Check battle.js.');
+  if(typeof global.StockfishAI!=='function')throw Error('Stockfish adapter is missing. Load stockfish-ai.js before main.js.');
   const ids={boardContainer:'board-container',chessGrid:'chess-grid',fxCanvas:'fx-canvas',turnText:'turn-text',turnPill:'turn-pill',checkAlert:'check-alert',scoreText:'score-val',whiteCapText:'white-cap-count',blackCapText:'black-cap-count',movesText:'moves-count',squarePxText:'square-px',skipBtn:'skip-btn',undoBtn:'undo-btn',newGameBtn:'new-game-btn',saveBtn:'save-btn',loadBtn:'load-btn',volumeSlider:'volume-slider',muteBtn:'mute-btn',promoModal:'promo-modal',startModal:'start-modal',gameOverModal:'game-over-modal',victoryModal:'victory-modal',playerFleetSelector:'player-fleet-select',enemyFleetSelector:'enemy-fleet-select',playerFleetLabel:'player-fleet-label',enemyFleetLabel:'enemy-fleet-label'};
-  for(const [key,id]of Object.entries(ids)){this[key]=document.getElementById(id);if(!this[key])throw Error(`Required HTML element #${id} is missing. Keep the matching integrated HTML file.`);}
+  for(const [key,id]of Object.entries(ids)){this[key]=document.getElementById(id);if(!this[key])throw Error(`Required HTML element #${id} is missing.`);}
   this.state=null;this.score=0;this.movesCount=0;this.aiDifficulty=2;
+  this.stockfishAI=new global.StockfishAI({chessEngine:this.E});
+  this.aiBackend='not-started';this.lastAiError=null;
   this.selectedSquare=null;this.legalDestinations=[];this.lastMove=null;this.pendingPromoMove=null;this.isAiThinking=false;
   this.boardSize=640;this.cellSize=80;this.gutterSize=24;this.session=0;this.aiTimer=null;this.needsResize=false;
   this.resetFrameClock=true;this.renderedAnimation=null;this.pixelRatio=1;
   this.canvasShipImages=new Map();this.fleetIds={...this.F.defaultIds};
   for(const side of ['w','b']){try{this.fleetIds[side]=this.F.normalizeFleetId(localStorage.getItem(PREF_KEYS[side]),this.F.defaultIds[side]);}catch(error){}}
   this.battleEngine=new global.BattleEngine(this.fxCanvas,(amount,time)=>this.applyShake(amount,time));
-  if(typeof this.battleEngine.setFactionResolver!=='function'||typeof this.battleEngine.motionSample!=='function')throw Error('Install the new battle.js together with this main.js.');
+  if(typeof this.battleEngine.setFactionResolver!=='function'||typeof this.battleEngine.motionSample!=='function')throw Error('Missing matching battle.js interface.');
   this.battleEngine.setFactionResolver(piece=>this.F.getFleet(piece,this.fleetIds));
   this.initFleetUI();this.initEvents();this.initAudioUI();this.initGame();this.handleResize();this.startLoop();
  }
  audio(name,...args){
   const audio=global.ArmadaAudio;if(!audio||typeof audio[name]!=='function')return;
-  try{const result=audio[name](...args);if(result&&typeof result.catch==='function')result.catch(error=>console.warn(`Audio ${name} unavailable:`,error));return result;}
-  catch(error){console.warn(`Audio ${name} unavailable:`,error);}
+  try{const result=audio[name](...args);if(result&&typeof result.catch==='function')result.catch(error=>console.warn(`Audio ${name} unavailable:`,error));return result;}catch(error){console.warn(`Audio ${name} unavailable:`,error);}
  }
  controlsLocked(){return this.isAiThinking||this.battleEngine.isBusy()||Boolean(this.pendingPromoMove);}
  initFleetUI(){
   for(const [side,select]of [['w',this.playerFleetSelector],['b',this.enemyFleetSelector]]){
    select.innerHTML='';
-   for(const fleet of this.F.listFleets()){
-    const option=document.createElement('option');option.value=fleet.id;
-    option.textContent=/^[1-9]\d*$/.test(fleet.id)?`${fleet.name} — Fleet ${fleet.id}`:fleet.name;
-    select.appendChild(option);
-   }
+   for(const fleet of this.F.listFleets()){const option=document.createElement('option');option.value=fleet.id;option.textContent=/^[1-9]\d*$/.test(fleet.id)?`${fleet.name} — Fleet ${fleet.id}`:fleet.name;select.appendChild(option);}
    select.value=this.fleetIds[side];
-   select.addEventListener('change',()=>{
-    if(this.controlsLocked()){select.value=this.fleetIds[side];return;}
-    this.setFleet(side,select.value);this.renderBoard();this.updateHUD();this.handleResize();
-   });
+   select.addEventListener('change',()=>{if(this.controlsLocked()){select.value=this.fleetIds[side];return;}this.setFleet(side,select.value);this.renderBoard();this.updateHUD();this.handleResize();});
   }
  }
  setFleet(side,value){
@@ -83,22 +77,18 @@ class CosmicArmadaApp{
  initEvents(){
   window.addEventListener('resize',()=>this.handleResize());
   document.addEventListener('visibilitychange',()=>{this.resetFrameClock=true;});
-  window.addEventListener('keydown',e=>{
-   const tag=e.target&&e.target.tagName;
-   if(e.code==='Space'&&!['SELECT','INPUT','BUTTON','TEXTAREA'].includes(tag)&&this.battleEngine.isBusy()){e.preventDefault();this.skipAnimation();}
-  });
+  window.addEventListener('keydown',e=>{const tag=e.target&&e.target.tagName;if(e.code==='Space'&&!['SELECT','INPUT','BUTTON','TEXTAREA'].includes(tag)&&this.battleEngine.isBusy()){e.preventDefault();this.skipAnimation();}});
   this.skipBtn.addEventListener('click',()=>this.skipAnimation());this.undoBtn.addEventListener('click',()=>this.undoMove());this.newGameBtn.addEventListener('click',()=>this.initGame());
   this.saveBtn.addEventListener('click',()=>this.saveFleet());this.loadBtn.addEventListener('click',()=>this.loadFleet());
   document.querySelectorAll('.ai-btn').forEach(btn=>btn.addEventListener('click',()=>{
-   document.querySelectorAll('.ai-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');this.aiDifficulty=parseInt(btn.dataset.level,10)||2;
+   if(this.controlsLocked())return;
+   const level=Number(btn.dataset.level);if(![1,2,3].includes(level))return;
+   this.aiDifficulty=level;this.updateHUD();
   }));
   const bind=(id,fn)=>{const el=document.getElementById(id);if(el)el.addEventListener('click',fn);};
   bind('start-action-btn',()=>{this.startModal.style.display='none';this.audio('resume');this.resetFrameClock=true;this.handleResize();});
   bind('retry-action-btn',()=>this.initGame());bind('victory-action-btn',()=>this.initGame());
-  document.querySelectorAll('.promo-option').forEach(btn=>btn.addEventListener('click',()=>{
-   const type=btn.dataset.piece;if(!this.pendingPromoMove||!['q','r','b','n'].includes(type))return;
-   const move={...this.pendingPromoMove,promotion:type};this.pendingPromoMove=null;this.promoModal.style.display='none';this.executeMove(move);
-  }));
+  document.querySelectorAll('.promo-option').forEach(btn=>btn.addEventListener('click',()=>{const type=btn.dataset.piece;if(!this.pendingPromoMove||!['q','r','b','n'].includes(type))return;const move={...this.pendingPromoMove,promotion:type};this.pendingPromoMove=null;this.promoModal.style.display='none';this.executeMove(move);}));
  }
  initAudioUI(){
   if(!global.ArmadaAudio){this.volumeSlider.disabled=true;this.muteBtn.disabled=true;return;}
@@ -107,31 +97,27 @@ class CosmicArmadaApp{
   this.muteBtn.addEventListener('click',()=>{this.muteBtn.style.opacity=this.audio('toggleMute')?'0.4':'1';});
  }
  handleResize(){
-  if(this.battleEngine.isBusy()){this.needsResize=true;return;}
-  this.needsResize=false;
+  if(this.battleEngine.isBusy()){this.needsResize=true;return;}this.needsResize=false;
   const arena=document.getElementById('arena'),header=document.getElementById('hud-header'),footer=document.getElementById('hud-footer');
-  const width=arena.clientWidth||window.innerWidth;
-  const height=arena.clientHeight||(window.innerHeight-header.getBoundingClientRect().height-footer.getBoundingClientRect().height);
-  const available=Math.max(96,Math.min(width,height)-16);
-  let board=Math.floor(available/8)*8;
+  const width=arena.clientWidth||window.innerWidth,height=arena.clientHeight||(window.innerHeight-header.getBoundingClientRect().height-footer.getBoundingClientRect().height);
+  const available=Math.max(96,Math.min(width,height)-16);let board=Math.floor(available/8)*8;
   while(board>64&&board+2*Math.max(20,Math.round(board/8*.28))>available)board-=8;
-  this.boardSize=board;this.cellSize=board/8;this.gutterSize=Math.max(20,Math.round(this.cellSize*.28));
-  const total=board+this.gutterSize*2;
+  this.boardSize=board;this.cellSize=board/8;this.gutterSize=Math.max(20,Math.round(this.cellSize*.28));const total=board+this.gutterSize*2;
   document.documentElement.style.setProperty('--board-size',`${board}px`);document.documentElement.style.setProperty('--gutter-size',`${this.gutterSize}px`);
   this.boardContainer.style.width=`${total}px`;this.boardContainer.style.height=`${total}px`;
   this.pixelRatio=Math.max(1,Math.min(MAX_PIXEL_RATIO,window.devicePixelRatio||1));
-  this.fxCanvas.width=Math.round(total*this.pixelRatio);this.fxCanvas.height=Math.round(total*this.pixelRatio);
-  this.fxCanvas.style.width=`${total}px`;this.fxCanvas.style.height=`${total}px`;
-  // All flight calculations stay in logical CSS pixels, never backing pixels.
-  this.battleEngine.setCanvas(this.fxCanvas,total,total);
-  this.squarePxText.textContent=`Square: ~${Math.round(this.cellSize)}px`;this.renderBoard();
-  const holder=this.chessGrid.querySelector('.ship-rim');
-  const rect=holder&&holder.getBoundingClientRect();
-  this.shipHolderSize=rect&&rect.width>0?Math.min(rect.width,rect.height):this.cellSize*.72;
+  this.fxCanvas.width=Math.round(total*this.pixelRatio);this.fxCanvas.height=Math.round(total*this.pixelRatio);this.fxCanvas.style.width=`${total}px`;this.fxCanvas.style.height=`${total}px`;
+  this.battleEngine.setCanvas(this.fxCanvas,total,total);this.squarePxText.textContent=`Square: ~${Math.round(this.cellSize)}px`;this.renderBoard();
+  const holder=this.chessGrid.querySelector('.ship-rim'),rect=holder&&holder.getBoundingClientRect();this.shipHolderSize=rect&&rect.width>0?Math.min(rect.width,rect.height):this.cellSize*.72;
  }
- cancelPendingWork(){this.session++;if(this.aiTimer!==null)clearTimeout(this.aiTimer);this.aiTimer=null;this.isAiThinking=false;this.battleEngine.cancelAnimation();this.resetFrameClock=true;}
+ cancelPendingWork(){
+  this.session++;if(this.aiTimer!==null)clearTimeout(this.aiTimer);this.aiTimer=null;
+  if(this.stockfishAI)this.stockfishAI.cancel();
+  this.isAiThinking=false;this.battleEngine.cancelAnimation();this.resetFrameClock=true;
+ }
  initGame(){
   this.cancelPendingWork();this.audio('resume');this.state=validateBasicState(this.E.createInitialState());this.score=0;this.movesCount=0;
+  this.aiBackend='not-started';this.lastAiError=null;
   this.selectedSquare=null;this.legalDestinations=[];this.lastMove=null;this.pendingPromoMove=null;
   this.promoModal.style.display='none';this.gameOverModal.style.display='none';this.victoryModal.style.display='none';
   document.getElementById('game-over-title').textContent='FLAGSHIP DESTROYED';
@@ -142,32 +128,23 @@ class CosmicArmadaApp{
   if(!this.state)return;const white=this.state.turn==='w',busy=this.battleEngine.isBusy(),locked=this.controlsLocked();
   this.turnPill.className=`turn-pill ${white?'':'black-turn'}`;
   this.turnText.textContent=this.ended()?'GAME COMPLETE':this.isAiThinking?'AI THINKING...':busy?'ENGAGEMENT COMBAT':white?'YOUR TURN':'AI OPPONENT';
+  this.turnText.title=this.aiBackend==='custom-fallback'?'Using custom AI fallback; inspect console for Stockfish error.':this.aiBackend==='stockfish'?'Stockfish browser engine':'';
   this.checkAlert.style.display=this.state.isCheck&&!this.state.isCheckmate?'flex':'none';this.scoreText.textContent=`SCORE: ${this.score}`;
   this.whiteCapText.textContent=this.state.capturedByWhite.length;this.blackCapText.textContent=this.state.capturedByBlack.length;this.movesText.textContent=`Moves: ${this.movesCount}`;
-  this.undoBtn.disabled=this.state.history.length<2||locked;this.skipBtn.style.display=busy?'flex':'none';
-  this.saveBtn.disabled=locked;this.loadBtn.disabled=locked;this.playerFleetSelector.disabled=locked;this.enemyFleetSelector.disabled=locked;
-  this.playerFleetSelector.value=this.fleetIds.w;this.enemyFleetSelector.value=this.fleetIds.b;
-  this.playerFleetLabel.textContent=`White: ${this.F.getFleetById(this.fleetIds.w).name}`;
-  this.enemyFleetLabel.textContent=`Black: ${this.F.getFleetById(this.fleetIds.b).name}`;
+  this.undoBtn.disabled=this.state.history.length<2||locked;this.skipBtn.style.display=busy?'flex':'none';this.saveBtn.disabled=locked;this.loadBtn.disabled=locked;
+  this.playerFleetSelector.disabled=locked;this.enemyFleetSelector.disabled=locked;this.playerFleetSelector.value=this.fleetIds.w;this.enemyFleetSelector.value=this.fleetIds.b;
+  this.playerFleetLabel.textContent=`White: ${this.F.getFleetById(this.fleetIds.w).name}`;this.enemyFleetLabel.textContent=`Black: ${this.F.getFleetById(this.fleetIds.b).name}`;
+  document.querySelectorAll('.ai-btn').forEach(btn=>{btn.disabled=locked;btn.classList.toggle('active',Number(btn.dataset.level)===this.aiDifficulty);});
  }
  squareToCanvas(r,c){
-  // Match the actual DOM ship center, including grid borders and holder offset.
-  // The supplied stylesheet puts the holder at top:5%, height:72% (center 41%).
   const square=this.chessGrid.querySelector(`.square[data-r="${r}"][data-c="${c}"]`);
-  if(square){
-   const canvas=this.fxCanvas.getBoundingClientRect(),rim=square.querySelector('.ship-rim');
-   if(rim){const rect=rim.getBoundingClientRect();return {x:rect.left-canvas.left+rect.width/2,y:rect.top-canvas.top+rect.height/2};}
-   const rect=square.getBoundingClientRect();
-   return {x:rect.left-canvas.left+square.clientLeft+square.clientWidth/2,
-    y:rect.top-canvas.top+square.clientTop+square.clientHeight*.41};
-  }
-  return {x:this.gutterSize+(c+.5)*this.cellSize,y:this.gutterSize+(r+.41)*this.cellSize};
+  if(square){const canvas=this.fxCanvas.getBoundingClientRect(),rim=square.querySelector('.ship-rim');if(rim){const rect=rim.getBoundingClientRect();return{x:rect.left-canvas.left+rect.width/2,y:rect.top-canvas.top+rect.height/2};}const rect=square.getBoundingClientRect();return{x:rect.left-canvas.left+square.clientLeft+square.clientWidth/2,y:rect.top-canvas.top+square.clientTop+square.clientHeight*.41};}
+  return{x:this.gutterSize+(c+.5)*this.cellSize,y:this.gutterSize+(r+.41)*this.cellSize};
  }
  capturedSquare(move){return move.capturedSquare||(move.isEnPassant?{r:move.from.r,c:move.to.c}:move.to);}
  renderBoard(){
-  if(!this.state)return;this.chessGrid.innerHTML='';const {board,isCheck}=this.state,kingPos=isCheck?this.E.findKing(board,this.state.turn):null;
-  const animation=this.battleEngine.activeBattle||this.battleEngine.activeGlide,animatedMove=animation&&animation.move;
-  this.renderedAnimation=animation||null;
+  if(!this.state)return;this.chessGrid.innerHTML='';const{board,isCheck}=this.state,kingPos=isCheck?this.E.findKing(board,this.state.turn):null;
+  const animation=this.battleEngine.activeBattle||this.battleEngine.activeGlide,animatedMove=animation&&animation.move;this.renderedAnimation=animation||null;
   const captured=this.battleEngine.activeBattle&&this.capturedSquare(this.battleEngine.activeBattle.move);
   for(let r=0;r<8;r++)for(let c=0;c<8;c++){
    const el=document.createElement('div');el.className=`square ${(r+c)%2?'dark':'light'}`;el.dataset.r=r;el.dataset.c=c;
@@ -181,64 +158,37 @@ class CosmicArmadaApp{
   }
  }
  createPieceElement(piece){
-  const a=this.F.getShip(piece,this.fleetIds),record=this.getShipAsset(piece);
-  const token=document.createElement('div');token.className=`piece-token color-${piece.color}`;token.dataset.piece=piece.type;token.dataset.fleet=a.fleet.id;
-  const rim=document.createElement('div');rim.className='ship-rim';
-  const size=el=>{el.style.width=`${a.size}%`;el.style.height=`${a.size}%`;el.style.flexShrink='0';};
+  const a=this.F.getShip(piece,this.fleetIds),record=this.getShipAsset(piece),token=document.createElement('div');token.className=`piece-token color-${piece.color}`;token.dataset.piece=piece.type;token.dataset.fleet=a.fleet.id;
+  const rim=document.createElement('div');rim.className='ship-rim';const size=el=>{el.style.width=`${a.size}%`;el.style.height=`${a.size}%`;el.style.flexShrink='0';};
   const img=document.createElement('img');img.className='ship-graphic';img.alt=`${a.fleet.name} ${PIECE_TITLES[piece.type]}`;img.draggable=false;size(img);
-  let attempt=Math.min(record.attempt,record.sources.length-1);
-  const applySource=()=>{const source=record.sources[attempt];img.style.transform=`rotate(${a.rotation-source.forward}rad)`;img.src=source.src;};
-  img.onerror=()=>{
-   attempt++;
-   if(attempt<record.sources.length){applySource();return;}
-   rim.innerHTML=getProceduralShipSvg(piece.type,a.fleet);const svg=rim.querySelector('svg');
-   if(svg){size(svg);svg.style.transform=`rotate(${a.rotation+Math.PI/2}rad)`;}
-  };
+  let attempt=Math.min(record.attempt,record.sources.length-1);const applySource=()=>{const source=record.sources[attempt];img.style.transform=`rotate(${a.rotation-source.forward}rad)`;img.src=source.src;};
+  img.onerror=()=>{attempt++;if(attempt<record.sources.length){applySource();return;}rim.innerHTML=getProceduralShipSvg(piece.type,a.fleet);const svg=rim.querySelector('svg');if(svg){size(svg);svg.style.transform=`rotate(${a.rotation+Math.PI/2}rad)`;}};
   rim.appendChild(img);token.appendChild(rim);applySource();
-  const badge=document.createElement('div');badge.className='emblem-badge';
-  const glyph=document.createElement('span');glyph.className='emblem-glyph';glyph.textContent=PIECE_GLYPHS[piece.type];glyph.style.display='none';
-  const marker=document.createElement('img');marker.className='emblem-icon';marker.alt='';marker.draggable=false;
-  marker.onerror=()=>{marker.style.display='none';glyph.style.display='inline';};marker.src=MARKER_IMAGES[piece.type];
-  const label=document.createElement('span');label.className='emblem-text';label.textContent=PIECE_NAMES[piece.type];
-  badge.appendChild(marker);badge.appendChild(glyph);badge.appendChild(label);token.appendChild(badge);return token;
+  const badge=document.createElement('div');badge.className='emblem-badge';const glyph=document.createElement('span');glyph.className='emblem-glyph';glyph.textContent=PIECE_GLYPHS[piece.type];glyph.style.display='none';
+  const marker=document.createElement('img');marker.className='emblem-icon';marker.alt='';marker.draggable=false;marker.onerror=()=>{marker.style.display='none';glyph.style.display='inline';};marker.src=MARKER_IMAGES[piece.type];
+  const label=document.createElement('span');label.className='emblem-text';label.textContent=PIECE_NAMES[piece.type];badge.appendChild(marker);badge.appendChild(glyph);badge.appendChild(label);token.appendChild(badge);return token;
  }
  getShipAsset(piece){
-  const a=this.F.getShip(piece,this.fleetIds),key=JSON.stringify([a.fleet.id,piece.type,a.src,a.fallbackSrc]);
-  if(this.canvasShipImages.has(key))return this.canvasShipImages.get(key);
-  const sources=[{src:a.src,forward:a.artForwardAngle}];
-  if(a.src!==a.fallbackSrc)sources.push({src:a.fallbackSrc,forward:0});
-  sources.push({src:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(getProceduralShipSvg(piece.type,a.fleet)),forward:-Math.PI/2});
+  const a=this.F.getShip(piece,this.fleetIds),key=JSON.stringify([a.fleet.id,piece.type,a.src,a.fallbackSrc]);if(this.canvasShipImages.has(key))return this.canvasShipImages.get(key);
+  const sources=[{src:a.src,forward:a.artForwardAngle}];if(a.src!==a.fallbackSrc)sources.push({src:a.fallbackSrc,forward:0});sources.push({src:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(getProceduralShipSvg(piece.type,a.fleet)),forward:-Math.PI/2});
   const image=new Image(),record={image,sources,attempt:0,ready:false,source:sources[0]};this.canvasShipImages.set(key,record);
-  image.onload=()=>{record.ready=Boolean(image.naturalWidth&&image.naturalHeight);};
-  image.onerror=()=>{
-   record.ready=false;record.attempt++;
-   if(record.attempt<sources.length){record.source=sources[record.attempt];image.src=record.source.src;}
-   else record.source=null;
-  };
-  image.src=record.source.src;return record;
+  image.onload=()=>{record.ready=Boolean(image.naturalWidth&&image.naturalHeight);};image.onerror=()=>{record.ready=false;record.attempt++;if(record.attempt<sources.length){record.source=sources[record.attempt];image.src=record.source.src;}else record.source=null;};image.src=record.source.src;return record;
  }
  preloadShips(){for(const color of ['w','b'])for(const type of this.F.types)this.getShipAsset({type,color});}
  handleSquareClick(r,c){
   if(!this.state||this.ended()||this.state.turn==='b'||this.controlsLocked())return;
-  if(this.selectedSquare){const move=this.legalDestinations.find(m=>m.to.r===r&&m.to.c===c);if(move){
-   if(move.piece.type==='p'&&(move.to.r===0||move.to.r===7)){this.pendingPromoMove=move;this.promoModal.style.display='flex';this.audio('playConfirmSelect');this.updateHUD();return;}
-   this.executeMove(move);return;
-  }}
-  const piece=this.state.board[r][c];
-  if(piece&&piece.color===this.state.turn){this.selectedSquare={r,c};this.legalDestinations=this.E.getLegalMovesForSquare(this.state,r,c);this.audio('playCrispClick');}
-  else{this.selectedSquare=null;this.legalDestinations=[];}this.renderBoard();
+  if(this.selectedSquare){const move=this.legalDestinations.find(m=>m.to.r===r&&m.to.c===c);if(move){if(move.piece.type==='p'&&(move.to.r===0||move.to.r===7)){this.pendingPromoMove=move;this.promoModal.style.display='flex';this.audio('playConfirmSelect');this.updateHUD();return;}this.executeMove(move);return;}}
+  const piece=this.state.board[r][c];if(piece&&piece.color===this.state.turn){this.selectedSquare={r,c};this.legalDestinations=this.E.getLegalMovesForSquare(this.state,r,c);this.audio('playCrispClick');}else{this.selectedSquare=null;this.legalDestinations=[];}this.renderBoard();
  }
  presentResult(){
   if(this.state.isCheckmate){
    if(this.state.winner==='w'||this.state.turn==='b'){this.audio('playVictoryFanfare');document.getElementById('victory-score').textContent=`Sector Secured! Final Score: ${this.score}`;this.victoryModal.style.display='flex';}
    else{this.audio('playDefeatMotif');document.getElementById('game-over-title').textContent='FLAGSHIP DESTROYED';document.getElementById('game-over-desc').textContent=`Command Citadel destroyed. Final Score: ${this.score}`;this.gameOverModal.style.display='flex';}
-  }else if(this.state.isDraw){
-   const reasons={'stalemate':'Stalemate','dead-position':'Dead position','fivefold-repetition':'Fivefold repetition','seventy-five-move-rule':'75-move rule','threefold-repetition':'Threefold repetition','fifty-move-rule':'50-move rule','agreement':'Draw by agreement'};
-   document.getElementById('game-over-title').textContent='TACTICAL DRAW';document.getElementById('game-over-desc').textContent=`${reasons[this.state.drawReason]||'Draw'}. Final Score: ${this.score}`;this.gameOverModal.style.display='flex';
-  }
+  }else if(this.state.isDraw){const reasons={'stalemate':'Stalemate','dead-position':'Dead position','fivefold-repetition':'Fivefold repetition','seventy-five-move-rule':'75-move rule','threefold-repetition':'Threefold repetition','fifty-move-rule':'50-move rule','agreement':'Draw by agreement'};document.getElementById('game-over-title').textContent='TACTICAL DRAW';document.getElementById('game-over-desc').textContent=`${reasons[this.state.drawReason]||'Draw'}. Final Score: ${this.score}`;this.gameOverModal.style.display='flex';}
  }
  executeMove(move){
-  if(this.ended()||this.battleEngine.isBusy())return;this.audio('resume');this.selectedSquare=null;this.legalDestinations=[];this.lastMove=move;
+  if(!this.state||this.ended()||this.battleEngine.isBusy())return;
+  this.audio('resume');this.selectedSquare=null;this.legalDestinations=[];this.lastMove=move;
   const from=this.squareToCanvas(move.from.r,move.from.c),to=this.squareToCanvas(move.to.r,move.to.c),session=this.session;
   const complete=()=>{
    if(session!==this.session)return;
@@ -248,24 +198,40 @@ class CosmicArmadaApp{
    if(!this.ended()){if(this.state.isCheck)this.audio('playErrorBuzz');else this.audio(move.captured?'playGunshotBlast':'playCrispClick');}
    if(this.state.turn==='b'&&!this.ended())this.triggerAiTurn();
   };
-  if(move.captured){
-   const captured=this.capturedSquare(move);
-   this.battleEngine.startBattle(move,from,to,complete,{defenderCoords:this.squareToCanvas(captured.r,captured.c),
-    attackerHeading:this.F.getShip(move.piece,this.fleetIds).rotation,
-    defenderHeading:this.F.getShip(move.captured,this.fleetIds).rotation});
-  }else this.battleEngine.startGlide(move,from,to,complete);
+  if(move.captured){const captured=this.capturedSquare(move);this.battleEngine.startBattle(move,from,to,complete,{defenderCoords:this.squareToCanvas(captured.r,captured.c),attackerHeading:this.F.getShip(move.piece,this.fleetIds).rotation,defenderHeading:this.F.getShip(move.captured,this.fleetIds).rotation});}
+  else this.battleEngine.startGlide(move,from,to,complete);
   this.resetFrameClock=true;this.renderBoard();this.updateHUD();
  }
  triggerAiTurn(){
-  if(this.isAiThinking||this.ended()||this.state.turn!=='b')return;this.isAiThinking=true;this.updateHUD();const session=this.session;
-  this.aiTimer=setTimeout(()=>{
+  if(!this.state||this.isAiThinking||this.battleEngine.isBusy()||this.ended()||this.state.turn!=='b')return;
+  this.isAiThinking=true;this.updateHUD();const session=this.session,level=this.aiDifficulty;
+  this.aiTimer=setTimeout(async()=>{
    this.aiTimer=null;if(session!==this.session)return;
    if(!this.state||this.state.turn!=='b'||this.ended()){this.isAiThinking=false;this.updateHUD();return;}
    try{
-    const best=this.E.findBestMove(this.state,this.aiDifficulty);this.isAiThinking=false;
-    if(best)this.executeMove(best);
-    else{if(typeof this.E.getGameStatus==='function')Object.assign(this.state,this.E.getGameStatus(this.state));this.updateHUD();this.presentResult();}
-   }catch(error){this.isAiThinking=false;this.updateHUD();console.error('AI move failed:',error);}
+    let best;
+    try{
+     best=await this.stockfishAI.findBestMove(this.state,level);
+     if(session!==this.session)return;
+     this.aiBackend='stockfish';this.lastAiError=null;console.info('Stockfish move:',this.stockfishAI.getStats());
+    }catch(error){
+     if(session!==this.session)return;
+     this.aiBackend='custom-fallback';this.lastAiError=String(error&&error.message||error);
+     console.warn('Stockfish unavailable; using the existing custom AI:',error);
+     best=this.E.findBestMove(this.state,level);
+    }
+    if(session!==this.session)return;
+    if(!this.state||this.state.turn!=='b'||this.ended()){this.isAiThinking=false;this.updateHUD();return;}
+    if(best){
+     const legal=this.E.getLegalMoves(this.state).find(m=>sameMove(m,best));
+     if(!legal)throw Error('AI returned an illegal move.');
+     this.isAiThinking=false;this.executeMove(legal);
+    }else{
+     if(typeof this.E.getGameStatus==='function')Object.assign(this.state,this.E.getGameStatus(this.state));
+     this.isAiThinking=false;this.updateHUD();this.presentResult();
+     if(!this.ended())throw Error('AI returned no move in an active position.');
+    }
+   }catch(error){if(session!==this.session)return;this.isAiThinking=false;this.updateHUD();console.error('AI move failed:',error);}
   },400);
  }
  skipAnimation(){this.battleEngine.skipAnimation();this.updateHUD();}
@@ -273,94 +239,57 @@ class CosmicArmadaApp{
   if(!this.state||this.state.history.length<2||this.controlsLocked()){this.audio('playErrorBuzz');return;}
   this.audio('playCrispClick');let state=this.E.createInitialState();const history=this.state.history,count=history.length-2;
   for(let i=0;i<count;i++)state=this.E.makeMove(state,history[i]);
-  this.state=validateBasicState(state);this.lastMove=count?state.history[count-1]:null;this.selectedSquare=null;this.legalDestinations=[];this.movesCount=count;
+  this.cancelPendingWork();this.state=validateBasicState(state);this.lastMove=count?state.history[count-1]:null;this.selectedSquare=null;this.legalDestinations=[];this.movesCount=count;
   this.score=state.history.reduce((total,m)=>total+(m.captured&&m.piece.color==='w'?(SCORE_VALUES[m.captured.type]||100):0),0);
   this.gameOverModal.style.display='none';this.victoryModal.style.display='none';this.renderBoard();this.updateHUD();
+  if(this.state.turn==='b'&&!this.ended())this.triggerAiTurn();
  }
  saveFleet(){
   if(!this.state||this.controlsLocked())return;
-  try{
-   localStorage.setItem(SAVE_KEY,JSON.stringify({version:4,state:this.state,score:this.score,movesCount:this.movesCount,
-    playerFleetId:this.fleetIds.w,enemyFleetId:this.fleetIds.b,fleetIds:{...this.fleetIds},aiDifficulty:this.aiDifficulty}));
-   this.audio('playConfirmSelect');alert('Deployment and both fleet selections saved.');
-  }catch(error){console.error('Save failed:',error);alert('Could not save deployment in this browser.');}
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify({version:4,state:this.state,score:this.score,movesCount:this.movesCount,playerFleetId:this.fleetIds.w,enemyFleetId:this.fleetIds.b,fleetIds:{...this.fleetIds},aiDifficulty:this.aiDifficulty}));this.audio('playConfirmSelect');alert('Deployment and both fleet selections saved.');}catch(error){console.error('Save failed:',error);alert('Could not save deployment in this browser.');}
  }
  loadFleet(){
   if(this.controlsLocked())return;
   try{
-   const raw=localStorage.getItem(SAVE_KEY);if(!raw){alert('No saved deployment found.');return;}const saved=JSON.parse(raw);
-   if(!saved||typeof saved!=='object')throw Error('Invalid save data.');
-   let candidate=saved.state;
-   if(!candidate){
-    const legacy=validateBasicState({...saved});candidate=legacy;
-    if(legacy.history.length){
-     try{let replay=this.E.createInitialState();for(const move of legacy.history)replay=this.E.makeMove(replay,move);if(positionIdentity(replay)===positionIdentity(legacy))candidate=replay;}
-     catch(error){console.warn('Legacy history could not be replayed; checking saved state.',error);}
-    }
-   }
-   validateBasicState(candidate);
-   if(typeof this.E.validateState==='function'&&this.E.validateState(candidate)===false)throw Error('Chess engine rejected the saved state.');
+   const raw=localStorage.getItem(SAVE_KEY);if(!raw){alert('No saved deployment found.');return;}const saved=JSON.parse(raw);if(!saved||typeof saved!=='object')throw Error('Invalid save data.');let candidate=saved.state;
+   if(!candidate){const legacy=validateBasicState({...saved});candidate=legacy;if(legacy.history.length){try{let replay=this.E.createInitialState();for(const move of legacy.history)replay=this.E.makeMove(replay,move);if(positionIdentity(replay)===positionIdentity(legacy))candidate=replay;}catch(error){console.warn('Legacy history could not be replayed; checking saved state.',error);}}}
+   validateBasicState(candidate);if(typeof this.E.validateState==='function'&&this.E.validateState(candidate)===false)throw Error('Chess engine rejected the saved state.');
    if(typeof this.E.getGameStatus==='function')Object.assign(candidate,this.E.getGameStatus(candidate));
    const ids=saved.fleetIds&&typeof saved.fleetIds==='object'?saved.fleetIds:{};
    const playerId=ids.w!==undefined?ids.w:saved.playerFleetId!==undefined?saved.playerFleetId:this.fleetIds.w;
    const enemyId=ids.b!==undefined?ids.b:saved.enemyFleetId!==undefined?saved.enemyFleetId:this.fleetIds.b;
    this.cancelPendingWork();this.state=candidate;this.score=Number.isFinite(saved.score)?saved.score:0;this.movesCount=Number.isFinite(saved.movesCount)?saved.movesCount:candidate.history.length;
-   this.setFleet('w',playerId);this.setFleet('b',enemyId);
-   this.aiDifficulty=[1,2,3].includes(saved.aiDifficulty)?saved.aiDifficulty:this.aiDifficulty;
-   document.querySelectorAll('.ai-btn').forEach(btn=>btn.classList.toggle('active',Number(btn.dataset.level)===this.aiDifficulty));
+   this.aiBackend='not-started';this.lastAiError=null;this.setFleet('w',playerId);this.setFleet('b',enemyId);this.aiDifficulty=[1,2,3].includes(saved.aiDifficulty)?saved.aiDifficulty:this.aiDifficulty;
    this.lastMove=candidate.history.length?candidate.history[candidate.history.length-1]:null;this.selectedSquare=null;this.legalDestinations=[];this.pendingPromoMove=null;
    this.promoModal.style.display='none';this.startModal.style.display='none';this.gameOverModal.style.display='none';this.victoryModal.style.display='none';
-   this.renderBoard();this.updateHUD();this.handleResize();this.presentResult();this.audio('playConfirmSelect');
-   if(this.state.turn==='b'&&!this.ended())this.triggerAiTurn();
+   this.renderBoard();this.updateHUD();this.handleResize();this.presentResult();this.audio('playConfirmSelect');if(this.state.turn==='b'&&!this.ended())this.triggerAiTurn();
   }catch(error){console.error('Load failed:',error);alert('Could not load this deployment.');}
  }
  applyShake(amount,time){
-  if(amount<=0){this.boardContainer.style.transform='none';return;}
-  const t=Number.isFinite(time)?time:performance.now()/1000;
-  const x=(Math.sin(t*41)+.35*Math.sin(t*73))*.36*amount;
-  const y=(Math.sin(t*47+.7)+.3*Math.sin(t*67))*.36*amount;
-  this.boardContainer.style.transform=`translate(${x}px, ${y}px)`;
+  if(amount<=0){this.boardContainer.style.transform='none';return;}const t=Number.isFinite(time)?time:performance.now()/1000;
+  const x=(Math.sin(t*41)+.35*Math.sin(t*73))*.36*amount,y=(Math.sin(t*47+.7)+.3*Math.sin(t*67))*.36*amount;this.boardContainer.style.transform=`translate(${x}px, ${y}px)`;
  }
  startLoop(){
-  let lastTime=null;
-  const loop=now=>{
-   let dt=lastTime===null||this.resetFrameClock||document.hidden?0:Math.max(0,Math.min(.25,(now-lastTime)/1000));
-   lastTime=now;this.resetFrameClock=false;
-   const ratio=Math.max(1,Math.min(MAX_PIXEL_RATIO,window.devicePixelRatio||1));
-   if(Math.abs(ratio-this.pixelRatio)>.001){if(this.battleEngine.isBusy())this.needsResize=true;else this.handleResize();}
-   this.battleEngine.update(dt); // Internally bounded steps; one render per browser frame.
-   const animation=this.battleEngine.activeBattle||this.battleEngine.activeGlide||null;
-   if(animation!==this.renderedAnimation){this.renderBoard();this.updateHUD();}
-   this.battleEngine.render((ctx,piece,x,y,opacity,angle)=>this.drawPieceCanvas(ctx,piece,x,y,opacity,angle));
-   requestAnimationFrame(loop);
+  let lastTime=null;const loop=now=>{
+   const dt=lastTime===null||this.resetFrameClock||document.hidden?0:Math.max(0,Math.min(.25,(now-lastTime)/1000));lastTime=now;this.resetFrameClock=false;
+   const ratio=Math.max(1,Math.min(MAX_PIXEL_RATIO,window.devicePixelRatio||1));if(Math.abs(ratio-this.pixelRatio)>.001){if(this.battleEngine.isBusy())this.needsResize=true;else this.handleResize();}
+   this.battleEngine.update(dt);const animation=this.battleEngine.activeBattle||this.battleEngine.activeGlide||null;if(animation!==this.renderedAnimation){this.renderBoard();this.updateHUD();}
+   this.battleEngine.render((ctx,piece,x,y,opacity,angle)=>this.drawPieceCanvas(ctx,piece,x,y,opacity,angle));requestAnimationFrame(loop);
   };requestAnimationFrame(loop);
  }
  drawPieceCanvas(ctx,piece,cx,cy,opacity=1,angle){
   if(!piece)return;const a=this.F.getShip(piece,this.fleetIds),record=this.getShipAsset(piece),image=record.image;
-  const box=(this.shipHolderSize||this.cellSize*.72)*(a.size/100),heading=Number.isFinite(angle)?angle:a.rotation;
-  ctx.save();
-  try{
-   ctx.translate(cx,cy);ctx.globalAlpha*=Math.max(0,Math.min(1,opacity));ctx.shadowBlur=0;ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
-   if(record.ready&&record.source&&image.complete&&image.naturalWidth&&image.naturalHeight){
-    ctx.rotate(heading-record.source.forward);
-    const scale=Math.min(box/image.naturalWidth,box/image.naturalHeight),width=image.naturalWidth*scale,height=image.naturalHeight*scale;
-    ctx.drawImage(image,-width/2,-height/2,width,height);
-   }else{
-    ctx.rotate(heading);ctx.fillStyle=a.fleet.primary;ctx.beginPath();ctx.moveTo(box*.45,0);ctx.lineTo(-box*.35,-box*.3);ctx.lineTo(-box*.2,0);ctx.lineTo(-box*.35,box*.3);ctx.closePath();ctx.fill();
-   }
+  const box=(this.shipHolderSize||this.cellSize*.72)*(a.size/100),heading=Number.isFinite(angle)?angle:a.rotation;ctx.save();
+  try{ctx.translate(cx,cy);ctx.globalAlpha*=Math.max(0,Math.min(1,opacity));ctx.shadowBlur=0;ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+   if(record.ready&&record.source&&image.complete&&image.naturalWidth&&image.naturalHeight){ctx.rotate(heading-record.source.forward);const scale=Math.min(box/image.naturalWidth,box/image.naturalHeight),width=image.naturalWidth*scale,height=image.naturalHeight*scale;ctx.drawImage(image,-width/2,-height/2,width,height);}
+   else{ctx.rotate(heading);ctx.fillStyle=a.fleet.primary;ctx.beginPath();ctx.moveTo(box*.45,0);ctx.lineTo(-box*.35,-box*.3);ctx.lineTo(-box*.2,0);ctx.lineTo(-box*.35,box*.3);ctx.closePath();ctx.fill();}
   }finally{ctx.restore();}
  }
 }
 function boot(){
  if(global.ArmadaApp)return;
  try{global.ArmadaApp=new CosmicArmadaApp();}
- catch(error){
-  console.error('Cosmic Armada startup failed:',error);
-  const modal=document.getElementById('start-modal');
-  const title=modal&&modal.querySelector('.modal-title'),desc=modal&&modal.querySelector('.modal-desc'),button=document.getElementById('start-action-btn');
-  if(modal)modal.style.display='flex';if(title)title.textContent='STARTUP ERROR';if(desc)desc.textContent=error.message;
-  if(button){button.disabled=true;button.textContent='CHECK LOCAL FILES';}
- }
+ catch(error){console.error('Cosmic Armada startup failed:',error);const modal=document.getElementById('start-modal'),title=modal&&modal.querySelector('.modal-title'),desc=modal&&modal.querySelector('.modal-desc'),button=document.getElementById('start-action-btn');if(modal)modal.style.display='flex';if(title)title.textContent='STARTUP ERROR';if(desc)desc.textContent=error.message;if(button){button.disabled=true;button.textContent='CHECK LOCAL FILES';}}
 }
 global.CosmicArmadaApp=CosmicArmadaApp;
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();

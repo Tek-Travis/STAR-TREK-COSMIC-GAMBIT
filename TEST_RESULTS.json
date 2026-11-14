@@ -1,0 +1,288 @@
+{
+  "summary": {
+    "passed": 58,
+    "total": 58
+  },
+  "methodology": {
+    "browser": "Headless Chromium via Playwright",
+    "productionFilesTested": [
+      "index.html",
+      "styles.css",
+      "factions.js",
+      "battle.js",
+      "main.js"
+    ],
+    "engine": "API-shaped TEST DOUBLE, not the user chess.js",
+    "audio": "Test doubles, absent audio, and throwing-audio scenarios",
+    "artwork": "Synthetic PNG test fixtures, deliberately missing files, real SVG fallbacks. Not the user artwork.",
+    "origins": [
+      "intercepted local HTTP origin",
+      "real file:// temporary project"
+    ],
+    "limitations": "Does not verify the real chess engine, chess-rule correctness, actual audio playback, or supplied game artwork. The original breakage was not reproduced with the user engine, which was not supplied."
+  },
+  "staticChecks": {
+    "javascriptSyntax": {
+      "main.js": {
+        "passed": true,
+        "stderr": ""
+      },
+      "factions.js": {
+        "passed": true,
+        "stderr": ""
+      },
+      "battle.js": {
+        "passed": true,
+        "stderr": ""
+      }
+    },
+    "cssParseErrors": [],
+    "duplicateHTMLIDs": 0,
+    "scriptOrder": [
+      "./audio.js",
+      "./chess.js",
+      "./factions.js",
+      "./battle.js",
+      "./main.js"
+    ]
+  },
+  "checks": [
+    {
+      "name": "Actual main.js starts in Chromium with the supplied API-shaped engine fixture",
+      "passed": true
+    },
+    {
+      "name": "Board contains 64 squares and 32 ship tokens",
+      "passed": true
+    },
+    {
+      "name": "Both static selectors contain every registered faction",
+      "passed": true
+    },
+    {
+      "name": "Default factions preserved",
+      "passed": true
+    },
+    {
+      "name": "Player and AI UI selections are independent",
+      "passed": true
+    },
+    {
+      "name": "Board tokens use each selected faction",
+      "passed": true
+    },
+    {
+      "name": "Both footer labels update",
+      "passed": true
+    },
+    {
+      "name": "Available numbered PNGs are used",
+      "passed": true
+    },
+    {
+      "name": "Missing numbered PNGs fall back to original PNGs",
+      "passed": true
+    },
+    {
+      "name": "Preserved sizes applied to all player pieces",
+      "passed": true
+    },
+    {
+      "name": "Real image transforms point White upward and Black downward",
+      "passed": true
+    },
+    {
+      "name": "Both firing-side palettes route through the integrated selection map",
+      "passed": true
+    },
+    {
+      "name": "Both sides may select the same faction",
+      "passed": true
+    },
+    {
+      "name": "Real pointer events select and start a normal move animation",
+      "passed": true
+    },
+    {
+      "name": "Both controls lock during a glide",
+      "passed": true
+    },
+    {
+      "name": "Skipping player glide commits once and queues AI",
+      "passed": true
+    },
+    {
+      "name": "AI fixture responds and controls unlock after animation",
+      "passed": true
+    },
+    {
+      "name": "Undo replays through the existing engine API and preserves both factions",
+      "passed": true
+    },
+    {
+      "name": "Save stores both IDs and full rule metadata",
+      "passed": true
+    },
+    {
+      "name": "Load restores BOTH fleet selections and labels",
+      "passed": true
+    },
+    {
+      "name": "Preferences are stored independently",
+      "passed": true
+    },
+    {
+      "name": "Invalid load is rejected before changing game or factions",
+      "passed": true
+    },
+    {
+      "name": "Old version-2 saves keep current player selection",
+      "passed": true
+    },
+    {
+      "name": "Old add-on version-3 saves restore both choices",
+      "passed": true
+    },
+    {
+      "name": "All registered fleet pairs resolve independently without changing chess state",
+      "passed": true
+    },
+    {
+      "name": "Every original torpedo loadout is preserved for both actors",
+      "passed": true
+    },
+    {
+      "name": "Full real battle update completes once and returns attacker to destination",
+      "passed": true
+    },
+    {
+      "name": "Pointer capture starts a real battle with correct per-actor palettes",
+      "passed": true
+    },
+    {
+      "name": "Faction colors are stored on fired beams for both roles",
+      "passed": true
+    },
+    {
+      "name": "Real canvas draws non-transparent battle pixels",
+      "passed": true
+    },
+    {
+      "name": "Battle locks both selectors",
+      "passed": true
+    },
+    {
+      "name": "Capture completion updates score and captured count",
+      "passed": true
+    },
+    {
+      "name": "New game cancels queued AI and preserves selected factions",
+      "passed": true
+    },
+    {
+      "name": "Promotion dialog locks both faction selectors",
+      "passed": true
+    },
+    {
+      "name": "Promotion choice is forwarded through the unchanged engine API",
+      "passed": true
+    },
+    {
+      "name": "Mobile board fits available viewport width and arena height",
+      "passed": true
+    },
+    {
+      "name": "Mobile HUD retains both visible selectors",
+      "passed": true
+    },
+    {
+      "name": "No runtime prototype override or injected selector style is installed",
+      "passed": true
+    },
+    {
+      "name": "No uncaught JavaScript page errors during desktop/mobile controller and battle checks",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "name": "Missing every PNG resolves both sides to decoded SVG fallbacks",
+      "passed": true
+    },
+    {
+      "name": "Missing PNGs still produce visible DOM ship images",
+      "passed": true
+    },
+    {
+      "name": "Missing-artwork scenario has no uncaught JavaScript errors",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "name": "Denied browser storage does not prevent independent selection",
+      "passed": true
+    },
+    {
+      "name": "Denied saving is handled without losing the game",
+      "passed": true
+    },
+    {
+      "name": "Missing optional audio disables audio controls without blocking startup",
+      "passed": true
+    },
+    {
+      "name": "Blocked-storage / absent-audio scenario has no uncaught JavaScript errors",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "name": "Throwing audio getVolume and resume methods do not abort startup",
+      "passed": true
+    },
+    {
+      "name": "Throwing audio weapon callback does not abort fire",
+      "passed": true
+    },
+    {
+      "name": "Broken-audio scenario has no uncaught JavaScript errors",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "name": "Missing real engine dependency produces a visible startup diagnostic",
+      "passed": true
+    },
+    {
+      "name": "Black-to-move load restores both factions before queued AI work",
+      "passed": true
+    },
+    {
+      "name": "Unknown saved IDs fall back independently for each side",
+      "passed": true
+    },
+    {
+      "name": "Reload restores both independent preferences",
+      "passed": true
+    },
+    {
+      "name": "Resize during animation is deferred to prevent coordinate jumps",
+      "passed": true
+    },
+    {
+      "name": "Deferred resize is applied when the move completes",
+      "passed": true
+    },
+    {
+      "name": "Local file:// launch works in Chromium without an HTTP server or external services (engine/audio fixtures)",
+      "passed": true
+    },
+    {
+      "name": "Local file scenario has no uncaught JavaScript errors",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "name": "EP capture animation uses the actual victim square, independent of destination",
+      "passed": true
+    }
+  ]
+}
