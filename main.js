@@ -1,810 +1,367 @@
-// ==========================================================================
-// Cosmic Armada Gambit - Standalone Vanilla Main Controller
-// Responsive 8x8 DOM Grid, Floating Canvas FX, AI Opponent, Save/Load
-// ==========================================================================
-
-(function(global) {
-  'use strict';
-
-  // Starship Asset Manifest
-  const SHIP_IMAGES = {
-    p: './assets/images/ship_pawn_scout.png',
-    n: './assets/images/ship_knight_destroyer.png',
-    b: './assets/images/ship_bishop_frigate.png',
-    r: './assets/images/ship_rook_cruiser.png',
-    q: './assets/images/ship_queen_dreadnought.png',
-    k: './assets/images/ship_king_flagship.png',
-  };
-
-  // SHIP SIZE CONTROLS
-  // Percentage of the existing ship holder.
-  // Change these values whenever you want to adjust the hierarchy.
-  const SHIP_IMAGE_SIZES = {
-    p: 25,   // Pawn — smallest
-    b: 65,   // Bishop
-    r: 45,   // Rook
-    n: 65,   // Knight
-    q: 120,   // Queen
-    k: 120,  // King — largest
-  };
-
-  const MARKER_IMAGES = {
-    p: './assets/images/marker_pawn.png',
-    n: './assets/images/marker_knight.png',
-    b: './assets/images/marker_bishop.png',
-    r: './assets/images/marker_rook.png',
-    q: './assets/images/marker_queen.png',
-    k: './assets/images/marker_king.png',
-  };
-
-  const PIECE_GLYPHS = {
-    p: '♙',
-    n: '♘',
-    b: '♗',
-    r: '♖',
-    q: '♕',
-    k: '♔',
-  };
-
-  const PIECE_NAMES = {
-    p: 'PAWN',
-    n: 'KNIGHT',
-    b: 'BISHOP',
-    r: 'ROOK',
-    q: 'QUEEN',
-    k: 'KING',
-  };
-
-  const PIECE_TITLES = {
-    p: 'Scout Corvette',
-    n: 'Interceptor Destroyer',
-    b: 'Cruiser Frigate',
-    r: 'Heavy Battlecruiser',
-    q: 'Armada Flagship',
-    k: 'Command Citadel Flagship',
-  };
-
-  // High-fidelity procedural SVG fallbacks for starships
-  function getProceduralShipSvg(type, color) {
-    const isW = color === 'w';
-    const primary = isW ? '#38bdf8' : '#ef4444';
-    const accent = isW ? '#fbbf24' : '#f97316';
-    const hull = isW ? '#0f2942' : '#3d0d16';
-
-    switch (type) {
-      case 'k': // Command Citadel Flagship
-        return `<svg viewBox="0 0 100 100" class="ship-svg">
-          <circle cx="50" cy="50" r="42" fill="none" stroke="${primary}" stroke-width="3" stroke-dasharray="8 4"/>
-          <circle cx="50" cy="50" r="30" fill="${hull}" stroke="${accent}" stroke-width="2"/>
-          <polygon points="50,15 65,40 58,75 50,68 42,75 35,40" fill="${primary}" opacity="0.9"/>
-          <circle cx="50" cy="50" r="10" fill="#ffffff" filter="drop-shadow(0 0 6px ${primary})"/>
-          <polygon points="50,22 58,42 42,42" fill="${accent}"/>
-        </svg>`;
-      case 'q': // Armada Flagship (Queen)
-        return `<svg viewBox="0 0 100 100" class="ship-svg">
-          <polygon points="50,12 85,55 68,82 50,70 32,82 15,55" fill="${hull}" stroke="${primary}" stroke-width="2.5"/>
-          <polygon points="50,18 76,52 64,74 50,65 36,74 24,52" fill="${primary}" opacity="0.85"/>
-          <circle cx="50" cy="46" r="12" fill="${accent}"/>
-          <circle cx="50" cy="46" r="6" fill="#ffffff"/>
-          <rect x="47" y="72" width="6" height="14" fill="#38bdf8"/>
-        </svg>`;
-      case 'r': // Heavy Battlecruiser (Rook)
-        return `<svg viewBox="0 0 100 100" class="ship-svg">
-          <rect x="26" y="24" width="48" height="54" rx="4" fill="${hull}" stroke="${primary}" stroke-width="2.5"/>
-          <rect x="32" y="30" width="36" height="42" fill="${primary}" opacity="0.85"/>
-          <polygon points="26,24 16,40 16,70 26,78" fill="${accent}"/>
-          <polygon points="74,24 84,40 84,70 74,78" fill="${accent}"/>
-          <rect x="42" y="42" width="16" height="18" fill="#ffffff"/>
-        </svg>`;
-      case 'b': // Cruiser Frigate (Bishop)
-        return `<svg viewBox="0 0 100 100" class="ship-svg">
-          <polygon points="50,10 75,55 60,86 50,75 40,86 25,55" fill="${hull}" stroke="${primary}" stroke-width="2.5"/>
-          <polygon points="50,18 68,52 56,76 50,68 44,76 32,52" fill="${primary}" opacity="0.85"/>
-          <ellipse cx="50" cy="44" rx="8" ry="14" fill="${accent}"/>
-          <circle cx="50" cy="44" r="4" fill="#ffffff"/>
-        </svg>`;
-      case 'n': // Interceptor Destroyer (Knight)
-        return `<svg viewBox="0 0 100 100" class="ship-svg">
-          <polygon points="50,12 80,45 68,82 45,68 25,78 32,40" fill="${hull}" stroke="${primary}" stroke-width="2.5"/>
-          <polygon points="50,20 72,45 60,72 45,62 34,70 38,42" fill="${primary}" opacity="0.85"/>
-          <polygon points="45,26 62,42 40,52" fill="${accent}"/>
-          <circle cx="50" cy="38" r="5" fill="#ffffff"/>
-        </svg>`;
-      case 'p': // Scout Corvette (Pawn)
-      default:
-        return `<svg viewBox="0 0 100 100" class="ship-svg">
-          <polygon points="50,15 78,65 60,78 50,70 40,78 22,65" fill="${hull}" stroke="${primary}" stroke-width="2.5"/>
-          <polygon points="50,24 70,62 58,70 50,65 42,70 30,62" fill="${primary}" opacity="0.85"/>
-          <polygon points="50,30 62,54 38,54" fill="${accent}"/>
-          <circle cx="50" cy="46" r="4" fill="#ffffff"/>
-        </svg>`;
-    }
+// Cosmic Armada Gambit — integrated controller, smooth-battle edition.
+// Replace together with the matching battle.js. Existing faction registry is unchanged.
+(function(global){
+'use strict';
+const MARKER_IMAGES={p:'./assets/images/marker_pawn.png',n:'./assets/images/marker_knight.png',b:'./assets/images/marker_bishop.png',r:'./assets/images/marker_rook.png',q:'./assets/images/marker_queen.png',k:'./assets/images/marker_king.png'};
+const PIECE_GLYPHS={p:'♙',n:'♘',b:'♗',r:'♖',q:'♕',k:'♔'};
+const PIECE_NAMES={p:'PAWN',n:'KNIGHT',b:'BISHOP',r:'ROOK',q:'QUEEN',k:'KING'};
+const PIECE_TITLES={p:'Scout Corvette',n:'Interceptor Destroyer',b:'Cruiser Frigate',r:'Heavy Battlecruiser',q:'Armada Flagship',k:'Command Citadel Flagship'};
+const SCORE_VALUES={p:100,n:300,b:300,r:500,q:900,k:5000};
+const PREF_KEYS={w:'armada_player_fleet',b:'armada_enemy_fleet'};
+const SAVE_KEY='armada_fleet_save';
+const MAX_PIXEL_RATIO=2; // Bound high-density drawing cost; CSS ship sizes do not change.
+function getProceduralShipSvg(type,fleet){
+ const primary=fleet.primary,accent=fleet.accent,hull=fleet.hull;
+ const shapes={
+ k:`<circle cx="50" cy="50" r="42" fill="none" stroke="${primary}" stroke-width="3" stroke-dasharray="8 4"/><circle cx="50" cy="50" r="30" fill="${hull}" stroke="${accent}" stroke-width="2"/><polygon points="50,15 65,40 58,75 50,68 42,75 35,40" fill="${primary}"/><circle cx="50" cy="50" r="10" fill="white"/>`,
+ q:`<polygon points="50,12 85,55 68,82 50,70 32,82 15,55" fill="${hull}" stroke="${primary}" stroke-width="2.5"/><polygon points="50,18 76,52 64,74 50,65 36,74 24,52" fill="${primary}"/><circle cx="50" cy="46" r="12" fill="${accent}"/><circle cx="50" cy="46" r="6" fill="white"/>`,
+ r:`<rect x="26" y="24" width="48" height="54" rx="4" fill="${hull}" stroke="${primary}" stroke-width="2.5"/><rect x="32" y="30" width="36" height="42" fill="${primary}"/><polygon points="26,24 16,40 16,70 26,78" fill="${accent}"/><polygon points="74,24 84,40 84,70 74,78" fill="${accent}"/><rect x="42" y="42" width="16" height="18" fill="white"/>`,
+ b:`<polygon points="50,10 75,55 60,86 50,75 40,86 25,55" fill="${hull}" stroke="${primary}" stroke-width="2.5"/><polygon points="50,18 68,52 56,76 50,68 44,76 32,52" fill="${primary}"/><ellipse cx="50" cy="44" rx="8" ry="14" fill="${accent}"/>`,
+ n:`<polygon points="50,12 80,45 68,82 45,68 25,78 32,40" fill="${hull}" stroke="${primary}" stroke-width="2.5"/><polygon points="50,20 72,45 60,72 45,62 34,70 38,42" fill="${primary}"/><polygon points="45,26 62,42 40,52" fill="${accent}"/>`,
+ p:`<polygon points="50,15 78,65 60,78 50,70 40,78 22,65" fill="${hull}" stroke="${primary}" stroke-width="2.5"/><polygon points="50,24 70,62 58,70 50,65 42,70 30,62" fill="${primary}"/><polygon points="50,30 62,54 38,54" fill="${accent}"/>`
+ };
+ return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" class="ship-svg">${shapes[type]||shapes.p}</svg>`;
+}
+function validateBasicState(state){
+ if(!state||!Array.isArray(state.board)||state.board.length!==8||!state.board.every(row=>Array.isArray(row)&&row.length===8))throw Error('Chess state must contain an 8 by 8 board.');
+ if(!['w','b'].includes(state.turn))throw Error('Chess state has an invalid turn.');
+ for(const row of state.board)for(const piece of row)if(piece&&(!['w','b'].includes(piece.color)||!Object.prototype.hasOwnProperty.call(PIECE_NAMES,piece.type)))throw Error('Chess state contains an invalid piece.');
+ if(!Array.isArray(state.history))state.history=[];
+ if(!Array.isArray(state.capturedByWhite))state.capturedByWhite=state.history.filter(m=>m&&m.captured&&m.piece&&m.piece.color==='w').map(m=>m.captured);
+ if(!Array.isArray(state.capturedByBlack))state.capturedByBlack=state.history.filter(m=>m&&m.captured&&m.piece&&m.piece.color==='b').map(m=>m.captured);
+ return state;
+}
+function positionIdentity(state){return state.turn+':'+state.board.map(row=>row.map(p=>p?p.color+p.type:'--').join('')).join('/');}
+class CosmicArmadaApp{
+ constructor(){
+  this.F=global.ArmadaFactions;this.E=global.ChessEngine;
+  if(!this.F||!['getFleet','getShip','normalizeFleetId','listFleets'].every(key=>typeof this.F[key]==='function'))throw Error('Missing or mismatched factions.js. Keep your working integrated faction registry.');
+  if(!this.E)throw Error('ChessEngine is missing. Check that your existing chess.js loaded.');
+  for(const name of ['createInitialState','makeMove','getLegalMovesForSquare','findBestMove','findKing'])if(typeof this.E[name]!=='function')throw Error(`ChessEngine.${name} is missing. Your chess.js interface needs checking.`);
+  if(typeof global.BattleEngine!=='function')throw Error('BattleEngine is missing. Check battle.js.');
+  const ids={boardContainer:'board-container',chessGrid:'chess-grid',fxCanvas:'fx-canvas',turnText:'turn-text',turnPill:'turn-pill',checkAlert:'check-alert',scoreText:'score-val',whiteCapText:'white-cap-count',blackCapText:'black-cap-count',movesText:'moves-count',squarePxText:'square-px',skipBtn:'skip-btn',undoBtn:'undo-btn',newGameBtn:'new-game-btn',saveBtn:'save-btn',loadBtn:'load-btn',volumeSlider:'volume-slider',muteBtn:'mute-btn',promoModal:'promo-modal',startModal:'start-modal',gameOverModal:'game-over-modal',victoryModal:'victory-modal',playerFleetSelector:'player-fleet-select',enemyFleetSelector:'enemy-fleet-select',playerFleetLabel:'player-fleet-label',enemyFleetLabel:'enemy-fleet-label'};
+  for(const [key,id]of Object.entries(ids)){this[key]=document.getElementById(id);if(!this[key])throw Error(`Required HTML element #${id} is missing. Keep the matching integrated HTML file.`);}
+  this.state=null;this.score=0;this.movesCount=0;this.aiDifficulty=2;
+  this.selectedSquare=null;this.legalDestinations=[];this.lastMove=null;this.pendingPromoMove=null;this.isAiThinking=false;
+  this.boardSize=640;this.cellSize=80;this.gutterSize=24;this.session=0;this.aiTimer=null;this.needsResize=false;
+  this.resetFrameClock=true;this.renderedAnimation=null;this.pixelRatio=1;
+  this.canvasShipImages=new Map();this.fleetIds={...this.F.defaultIds};
+  for(const side of ['w','b']){try{this.fleetIds[side]=this.F.normalizeFleetId(localStorage.getItem(PREF_KEYS[side]),this.F.defaultIds[side]);}catch(error){}}
+  this.battleEngine=new global.BattleEngine(this.fxCanvas,(amount,time)=>this.applyShake(amount,time));
+  if(typeof this.battleEngine.setFactionResolver!=='function'||typeof this.battleEngine.motionSample!=='function')throw Error('Install the new battle.js together with this main.js.');
+  this.battleEngine.setFactionResolver(piece=>this.F.getFleet(piece,this.fleetIds));
+  this.initFleetUI();this.initEvents();this.initAudioUI();this.initGame();this.handleResize();this.startLoop();
+ }
+ audio(name,...args){
+  const audio=global.ArmadaAudio;if(!audio||typeof audio[name]!=='function')return;
+  try{const result=audio[name](...args);if(result&&typeof result.catch==='function')result.catch(error=>console.warn(`Audio ${name} unavailable:`,error));return result;}
+  catch(error){console.warn(`Audio ${name} unavailable:`,error);}
+ }
+ controlsLocked(){return this.isAiThinking||this.battleEngine.isBusy()||Boolean(this.pendingPromoMove);}
+ initFleetUI(){
+  for(const [side,select]of [['w',this.playerFleetSelector],['b',this.enemyFleetSelector]]){
+   select.innerHTML='';
+   for(const fleet of this.F.listFleets()){
+    const option=document.createElement('option');option.value=fleet.id;
+    option.textContent=/^[1-9]\d*$/.test(fleet.id)?`${fleet.name} — Fleet ${fleet.id}`:fleet.name;
+    select.appendChild(option);
+   }
+   select.value=this.fleetIds[side];
+   select.addEventListener('change',()=>{
+    if(this.controlsLocked()){select.value=this.fleetIds[side];return;}
+    this.setFleet(side,select.value);this.renderBoard();this.updateHUD();this.handleResize();
+   });
   }
-
-  class CosmicArmadaApp {
-    constructor() {
-      // DOM Elements
-      this.boardContainer = document.getElementById('board-container');
-      this.chessGrid = document.getElementById('chess-grid');
-      this.fxCanvas = document.getElementById('fx-canvas');
-      this.turnText = document.getElementById('turn-text');
-      this.turnPill = document.getElementById('turn-pill');
-      this.checkAlert = document.getElementById('check-alert');
-      this.scoreText = document.getElementById('score-val');
-      this.whiteCapText = document.getElementById('white-cap-count');
-      this.blackCapText = document.getElementById('black-cap-count');
-      this.movesText = document.getElementById('moves-count');
-      this.squarePxText = document.getElementById('square-px');
-      this.skipBtn = document.getElementById('skip-btn');
-      this.undoBtn = document.getElementById('undo-btn');
-      this.newGameBtn = document.getElementById('new-game-btn');
-      this.saveBtn = document.getElementById('save-btn');
-      this.loadBtn = document.getElementById('load-btn');
-      this.volumeSlider = document.getElementById('volume-slider');
-      this.muteBtn = document.getElementById('mute-btn');
-      this.promoModal = document.getElementById('promo-modal');
-      this.startModal = document.getElementById('start-modal');
-      this.gameOverModal = document.getElementById('game-over-modal');
-      this.victoryModal = document.getElementById('victory-modal');
-
-      // State
-      this.state = null;
-      this.score = 0;
-      this.movesCount = 0;
-      this.aiDifficulty = 2;
-      this.selectedSquare = null;
-      this.legalDestinations = [];
-      this.lastMove = null;
-      this.pendingPromoMove = null;
-      this.isAiThinking = false;
-
-      // Board Dimensions
-      this.boardSize = 640;
-      this.cellSize = 80;
-      this.gutterSize = 24;
-
-      // Engines
-      this.battleEngine = new BattleEngine(this.fxCanvas, (shake) => {
-        this.applyShake(shake);
-      });
-
-      this.initEvents();
-      this.initAudioUI();
-      this.handleResize();
-      this.initGame();
-      this.startLoop();
-    }
-
-    initEvents() {
-      window.addEventListener('resize', () => this.handleResize());
-
-      // Spacebar skips animation
-      window.addEventListener('keydown', (e) => {
-        if (e.code === 'Space' && this.battleEngine.isBusy()) {
-          e.preventDefault();
-          this.skipAnimation();
-        }
-      });
-
-      this.skipBtn.addEventListener('click', () => this.skipAnimation());
-      this.undoBtn.addEventListener('click', () => this.undoMove());
-      this.newGameBtn.addEventListener('click', () => this.initGame());
-
-      if (this.saveBtn) this.saveBtn.addEventListener('click', () => this.saveFleet());
-      if (this.loadBtn) this.loadBtn.addEventListener('click', () => this.loadFleet());
-
-      // AI Selector buttons
-      document.querySelectorAll('.ai-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          document.querySelectorAll('.ai-btn').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          this.aiDifficulty = parseInt(btn.dataset.level, 10);
-        });
-      });
-
-      // Modal Start Button
-      const startAction = document.getElementById('start-action-btn');
-      if (startAction) startAction.addEventListener('click', () => {
-        this.startModal.style.display = 'none';
-        if (global.ArmadaAudio) global.ArmadaAudio.resume();
-      });
-
-      const retryAction = document.getElementById('retry-action-btn');
-      if (retryAction) retryAction.addEventListener('click', () => {
-        this.gameOverModal.style.display = 'none';
-        this.initGame();
-      });
-
-      const victoryAction = document.getElementById('victory-action-btn');
-      if (victoryAction) victoryAction.addEventListener('click', () => {
-        this.victoryModal.style.display = 'none';
-        this.initGame();
-      });
-
-      // Pawn Promotion Buttons
-      document.querySelectorAll('.promo-option').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const promoType = btn.dataset.piece;
-          this.promoModal.style.display = 'none';
-          if (this.pendingPromoMove) {
-            const finalMove = { ...this.pendingPromoMove, promotion: promoType };
-            this.pendingPromoMove = null;
-            this.executeMove(finalMove);
-          }
-        });
-      });
-    }
-
-    initAudioUI() {
-      if (!global.ArmadaAudio) return;
-      const vol = global.ArmadaAudio.getVolume();
-      this.volumeSlider.value = Math.round(vol * 100);
-
-      this.volumeSlider.addEventListener('input', (e) => {
-        const val = parseFloat(e.target.value) / 100;
-        global.ArmadaAudio.setVolume(val);
-      });
-
-      this.muteBtn.addEventListener('click', () => {
-        const muted = global.ArmadaAudio.toggleMute();
-        this.muteBtn.style.opacity = muted ? '0.4' : '1';
-      });
-    }
-
-    handleResize() {
-      const topBarHeight = 56;
-      const bottomBarHeight = 32;
-      const margin = 16;
-
-      const availWidth = Math.max(300, window.innerWidth - margin * 2);
-      const availHeight = Math.max(300, window.innerHeight - topBarHeight - bottomBarHeight - margin * 2);
-
-      const maxSquare = Math.floor(Math.min(availWidth, availHeight));
-      this.boardSize = Math.max(288, Math.floor(maxSquare / 8) * 8);
-      this.cellSize = this.boardSize / 8;
-      this.gutterSize = Math.max(20, Math.round(this.cellSize * 0.28));
-
-      const totalSize = this.boardSize + this.gutterSize * 2;
-
-      // Update CSS variables
-      document.documentElement.style.setProperty('--board-size', `${this.boardSize}px`);
-      document.documentElement.style.setProperty('--gutter-size', `${this.gutterSize}px`);
-
-      this.boardContainer.style.width = `${totalSize}px`;
-      this.boardContainer.style.height = `${totalSize}px`;
-
-      this.fxCanvas.width = totalSize;
-      this.fxCanvas.height = totalSize;
-      this.fxCanvas.style.width = `${totalSize}px`;
-      this.fxCanvas.style.height = `${totalSize}px`;
-
-      this.battleEngine.setCanvas(this.fxCanvas);
-
-      if (this.squarePxText) {
-        this.squarePxText.textContent = `Square: ~${Math.round(this.cellSize)}px`;
-      }
-
-      this.renderBoard();
-    }
-
-    initGame() {
-      if (global.ArmadaAudio) global.ArmadaAudio.resume();
-      this.state = global.ChessEngine.createInitialState();
-      this.score = 0;
-      this.movesCount = 0;
-      this.selectedSquare = null;
-      this.legalDestinations = [];
-      this.lastMove = null;
-      this.pendingPromoMove = null;
-      this.isAiThinking = false;
-
-      this.updateHUD();
-      this.renderBoard();
-    }
-
-    updateHUD() {
-      if (!this.state) return;
-      const isWhite = this.state.turn === 'w';
-
-      this.turnPill.className = `turn-pill ${isWhite ? '' : 'black-turn'}`;
-      if (this.isAiThinking) {
-        this.turnText.textContent = 'AI THINKING...';
-      } else if (this.battleEngine.isBusy()) {
-        this.turnText.textContent = 'ENGAGEMENT COMBAT';
-      } else {
-        this.turnText.textContent = isWhite ? 'YOUR TURN' : 'AI OPPONENT';
-      }
-
-      this.checkAlert.style.display = (this.state.isCheck && !this.state.isCheckmate) ? 'flex' : 'none';
-      this.scoreText.textContent = `SCORE: ${this.score}`;
-      this.whiteCapText.textContent = this.state.capturedByWhite.length;
-      this.blackCapText.textContent = this.state.capturedByBlack.length;
-      this.movesText.textContent = `Moves: ${this.movesCount}`;
-      this.undoBtn.disabled = this.state.history.length < 2 || this.isAiThinking || this.battleEngine.isBusy();
-      this.skipBtn.style.display = this.battleEngine.isBusy() ? 'flex' : 'none';
-    }
-
-    squareToCanvas(r, c) {
-      return {
-        x: this.gutterSize + c * this.cellSize + this.cellSize / 2,
-        y: this.gutterSize + r * this.cellSize + this.cellSize / 2,
-      };
-    }
-
-    renderBoard() {
-      if (!this.state) return;
-      this.chessGrid.innerHTML = '';
-
-      const { board, isCheck } = this.state;
-      const kingPos = isCheck ? global.ChessEngine.findKing(board, this.state.turn) : null;
-
-      for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
-          const squareEl = document.createElement('div');
-          const isDark = (r + c) % 2 === 1;
-          squareEl.className = `square ${isDark ? 'dark' : 'light'}`;
-          squareEl.dataset.r = r;
-          squareEl.dataset.c = c;
-
-          // Selected square highlight
-          if (this.selectedSquare && this.selectedSquare.r === r && this.selectedSquare.c === c) {
-            squareEl.classList.add('selected');
-          }
-
-          // Last move highlight
-          if (this.lastMove && ((this.lastMove.from.r === r && this.lastMove.from.c === c) || (this.lastMove.to.r === r && this.lastMove.to.c === c))) {
-            squareEl.classList.add('last-move');
-          }
-
-          // Check alert on king's square
-          if (kingPos && kingPos.r === r && kingPos.c === c) {
-            squareEl.classList.add('check-alert');
-          }
-
-          // Legal move destinations
-          const destMove = this.legalDestinations.find(m => m.to.r === r && m.to.c === c);
-          if (destMove) {
-            squareEl.classList.add(destMove.captured ? 'legal-capture' : 'legal-move');
-          }
-
-          // Render Piece Token (unless hidden during active battle or glide)
-          const piece = board[r][c];
-          const isAttackerHidden = this.battleEngine.isBusy() && this.lastMove && this.lastMove.from.r === r && this.lastMove.from.c === c;
-          const isDefenderHidden = this.battleEngine.activeBattle && this.battleEngine.activeBattle.move.to.r === r && this.battleEngine.activeBattle.move.to.c === c;
-
-          if (piece && !isAttackerHidden && !isDefenderHidden) {
-            squareEl.appendChild(this.createPieceElement(piece));
-          }
-
-          squareEl.addEventListener('pointerdown', (e) => {
-            e.stopPropagation();
-            this.handleSquareClick(r, c);
-          });
-
-          this.chessGrid.appendChild(squareEl);
-        }
-      }
-    }
-
-    createPieceElement(piece) {
-      const token = document.createElement('div');
-      token.className = `piece-token color-${piece.color}`;
-      token.dataset.piece = piece.type;
-
-      // One shared size setting for this piece type.
-      const imageSize = SHIP_IMAGE_SIZES[piece.type] ?? 82;
-
-      const applyShipSize = (element) => {
-        element.style.width = `${imageSize}%`;
-        element.style.height = `${imageSize}%`;
-        element.style.flexShrink = '0';
-      };
-
-      // Ship holder: keeps your existing placement and drop shadow.
-      const rim = document.createElement('div');
-      rim.className = 'ship-rim';
-
-      // Starship image.
-      const img = document.createElement('img');
-      img.className = 'ship-graphic';
-      img.alt = PIECE_TITLES[piece.type];
-      img.draggable = false;
-
-      applyShipSize(img);
-
-      // Give the procedural fallback the same piece-specific size.
-      img.onerror = () => {
-        rim.innerHTML = getProceduralShipSvg(
-          piece.type,
-          piece.color
-        );
-
-        const fallbackSvg = rim.querySelector('svg');
-
-        if (fallbackSvg) {
-          applyShipSize(fallbackSvg);
-        }
-      };
-
-      img.src = SHIP_IMAGES[piece.type];
-
-      rim.appendChild(img);
-      token.appendChild(rim);
-
-      // Separate emblem: its size and position stay unchanged.
-      const badge = document.createElement('div');
-      badge.className = 'emblem-badge';
-
-      const glyphSpan = document.createElement('span');
-      glyphSpan.className = 'emblem-glyph';
-      glyphSpan.textContent = PIECE_GLYPHS[piece.type];
-      glyphSpan.style.display = 'none';
-
-      const markerImg = document.createElement('img');
-      markerImg.className = 'emblem-icon';
-      markerImg.alt = '';
-      markerImg.draggable = false;
-
-      markerImg.onerror = () => {
-        markerImg.style.display = 'none';
-        glyphSpan.style.display = 'inline';
-      };
-
-      markerImg.src = MARKER_IMAGES[piece.type];
-
-      const label = document.createElement('span');
-      label.className = 'emblem-text';
-      label.textContent = PIECE_NAMES[piece.type];
-
-      badge.appendChild(markerImg);
-      badge.appendChild(glyphSpan);
-      badge.appendChild(label);
-
-      token.appendChild(badge);
-
-      return token;
-    }
-
-    handleSquareClick(r, c) {
-      if (!this.state || this.state.turn === 'b' || this.isAiThinking || this.battleEngine.isBusy()) {
-        return;
-      }
-
-      const clickedPiece = this.state.board[r][c];
-
-      // 1. Check if clicking legal destination
-      if (this.selectedSquare) {
-        const matchingMove = this.legalDestinations.find(m => m.to.r === r && m.to.c === c);
-        if (matchingMove) {
-          // Pawn promotion modal
-          if (matchingMove.piece.type === 'p' && (matchingMove.to.r === 0 || matchingMove.to.r === 7)) {
-            this.pendingPromoMove = matchingMove;
-            this.promoModal.style.display = 'flex';
-            if (global.ArmadaAudio) global.ArmadaAudio.playConfirmSelect();
-            return;
-          }
-
-          this.executeMove(matchingMove);
-          return;
-        }
-      }
-
-      // 2. Select own piece
-      if (clickedPiece && clickedPiece.color === this.state.turn) {
-        this.selectedSquare = { r, c };
-        this.legalDestinations = global.ChessEngine.getLegalMovesForSquare(this.state, r, c);
-        if (global.ArmadaAudio) global.ArmadaAudio.playCrispClick();
-        this.renderBoard();
-      } else {
-        // Deselect
-        this.selectedSquare = null;
-        this.legalDestinations = [];
-        this.renderBoard();
-      }
-    }
-
-    executeMove(move) {
-      if (global.ArmadaAudio) global.ArmadaAudio.resume();
-
-      this.selectedSquare = null;
-      this.legalDestinations = [];
-      this.lastMove = move;
-      this.renderBoard();
-      this.updateHUD();
-
-      const fromCoords = this.squareToCanvas(move.from.r, move.from.c);
-      const toCoords = this.squareToCanvas(move.to.r, move.to.c);
-
-      const onComplete = () => {
-        const nextState = global.ChessEngine.makeMove(this.state, move);
-        this.state = nextState;
-        this.movesCount++;
-
-        if (move.captured && move.piece.color === 'w') {
-          const vals = { p: 100, n: 300, b: 300, r: 500, q: 900, k: 5000 };
-          this.score += vals[move.captured.type] || 100;
-        }
-
-        this.renderBoard();
-        this.updateHUD();
-
-        if (nextState.isCheckmate) {
-          if (move.piece.color === 'w') {
-            if (global.ArmadaAudio) global.ArmadaAudio.playVictoryFanfare();
-            document.getElementById('victory-score').textContent = `Sector Secured! Final Score: ${this.score}`;
-            this.victoryModal.style.display = 'flex';
-          } else {
-            if (global.ArmadaAudio) global.ArmadaAudio.playDefeatMotif();
-            document.getElementById('game-over-desc').textContent = `Command Citadel destroyed. Final Score: ${this.score}`;
-            this.gameOverModal.style.display = 'flex';
-          }
-        } else if (nextState.isDraw) {
-          document.getElementById('game-over-title').textContent = 'TACTICAL DRAW';
-          document.getElementById('game-over-desc').textContent = `Stalemate reached. Final Score: ${this.score}`;
-          this.gameOverModal.style.display = 'flex';
-        } else if (nextState.isCheck) {
-          if (global.ArmadaAudio) global.ArmadaAudio.playErrorBuzz();
-        } else if (move.captured) {
-          if (global.ArmadaAudio) global.ArmadaAudio.playGunshotBlast();
-        } else {
-          if (global.ArmadaAudio) global.ArmadaAudio.playCrispClick();
-        }
-
-        // Trigger AI turn if Black's move
-        if (this.state.turn === 'b' && !this.state.isCheckmate && !this.state.isDraw) {
-          this.triggerAiTurn();
-        }
-      };
-
-      if (move.captured) {
-        this.battleEngine.startBattle(move, fromCoords, toCoords, onComplete);
-      } else {
-        this.battleEngine.startGlide(move, fromCoords, toCoords, onComplete);
-      }
-
-      this.updateHUD();
-    }
-
-    triggerAiTurn() {
-      this.isAiThinking = true;
-      this.updateHUD();
-
-      setTimeout(() => {
-        if (!this.state || this.state.turn !== 'b') {
-          this.isAiThinking = false;
-          this.updateHUD();
-          return;
-        }
-
-        const bestMove = global.ChessEngine.findBestMove(this.state, this.aiDifficulty);
-        this.isAiThinking = false;
-
-        if (bestMove) {
-          if (bestMove.piece.type === 'p' && bestMove.to.r === 7 && !bestMove.promotion) {
-            bestMove.promotion = 'q';
-          }
-          this.executeMove(bestMove);
-        }
-      }, 400);
-    }
-
-    skipAnimation() {
-      this.battleEngine.skipAnimation();
-      this.updateHUD();
-    }
-
-    undoMove() {
-      if (this.state.history.length < 2 || this.isAiThinking || this.battleEngine.isBusy()) {
-        if (global.ArmadaAudio) global.ArmadaAudio.playErrorBuzz();
-        return;
-      }
-      if (global.ArmadaAudio) global.ArmadaAudio.playCrispClick();
-
-      let state = global.ChessEngine.createInitialState();
-      const targetLen = this.state.history.length - 2;
-      for (let i = 0; i < targetLen; i++) {
-        state = global.ChessEngine.makeMove(state, this.state.history[i]);
-      }
-      this.state = state;
-      this.lastMove = targetLen > 0 ? state.history[targetLen - 1] : null;
-      this.selectedSquare = null;
-      this.legalDestinations = [];
-      this.movesCount = Math.max(0, this.movesCount - 2);
-      this.renderBoard();
-      this.updateHUD();
-    }
-
-    saveFleet() {
-      if (!this.state) return;
-      try {
-        const payload = {
-          board: this.state.board,
-          turn: this.state.turn,
-          halfmoveClock: this.state.halfmoveClock,
-          fullmoveNumber: this.state.fullmoveNumber,
-          enPassantTarget: this.state.enPassantTarget,
-          history: this.state.history,
-          score: this.score,
-          movesCount: this.movesCount,
-        };
-        localStorage.setItem('armada_fleet_save', JSON.stringify(payload));
-        if (global.ArmadaAudio) global.ArmadaAudio.playConfirmSelect();
-        alert('Cosmic Armada deployment state saved successfully!');
-      } catch (e) {
-        console.error('Save failed:', e);
-      }
-    }
-
-    loadFleet() {
-      try {
-        const raw = localStorage.getItem('armada_fleet_save');
-        if (!raw) {
-          alert('No saved deployment found in local telemetry storage.');
-          return;
-        }
-        const saved = JSON.parse(raw);
-        this.state = {
-          board: saved.board,
-          turn: saved.turn,
-          halfmoveClock: saved.halfmoveClock || 0,
-          fullmoveNumber: saved.fullmoveNumber || 1,
-          enPassantTarget: saved.enPassantTarget || null,
-          history: saved.history || [],
-          isCheck: false,
-          isCheckmate: false,
-          isStalemate: false,
-          isDraw: false,
-          capturedByWhite: [],
-          capturedByBlack: [],
-        };
-        this.score = saved.score || 0;
-        this.movesCount = saved.movesCount || 0;
-        this.lastMove = this.state.history.length > 0 ? this.state.history[this.state.history.length - 1] : null;
-        this.selectedSquare = null;
-        this.legalDestinations = [];
-        this.renderBoard();
-        this.updateHUD();
-        if (global.ArmadaAudio) global.ArmadaAudio.playConfirmSelect();
-      } catch (e) {
-        console.error('Load failed:', e);
-        alert('Failed to parse saved deployment.');
-      }
-    }
-
-    applyShake(amount) {
-      if (amount <= 0) {
-        this.boardContainer.style.transform = 'none';
-        return;
-      }
-      const sx = (Math.random() - 0.5) * amount;
-      const sy = (Math.random() - 0.5) * amount;
-      this.boardContainer.style.transform = `translate(${sx}px, ${sy}px)`;
-    }
-
-    startLoop() {
-      // Preload the same ship images used on the chessboard.
-      this.canvasShipImages = {};
-
-      Object.keys(SHIP_IMAGES).forEach((type) => {
-        const image = new Image();
-
-        image.onerror = () => {
-          console.error(
-            'Could not load ship image:',
-            SHIP_IMAGES[type]
-          );
-        };
-
-        image.src = SHIP_IMAGES[type];
-        this.canvasShipImages[type] = image;
-      });
-
-      let lastTime = performance.now();
-      let previousAnimation = null;
-
-      const loop = (now) => {
-        const dt = Math.min(0.1, (now - lastTime) / 1000);
-        lastTime = now;
-
-        this.battleEngine.update(dt);
-
-        // Detect each new battle or glide, including consecutive moves.
-        const currentAnimation =
-          this.battleEngine.activeBattle ||
-          this.battleEngine.activeGlide ||
-          null;
-
-        if (currentAnimation !== previousAnimation) {
-          previousAnimation = currentAnimation;
-          this.renderBoard();
-          this.updateHUD();
-        }
-
-        this.battleEngine.render(
-          (ctx, piece, x, y, opacity, angle) => {
-            this.drawPieceCanvas(
-              ctx,
-              piece,
-              x,
-              y,
-              opacity,
-              angle
-            );
-          }
-        );
-
-        requestAnimationFrame(loop);
-      };
-
-      requestAnimationFrame(loop);
-    }
-
-    drawPieceCanvas(ctx, piece, cx, cy, opacity = 1, angle) {
-      if (!piece || !this.canvasShipImages) return;
-
-      const image = this.canvasShipImages[piece.type];
-
-      // Use the real PNG, not a circle, triangle, or chess icon.
-      if (
-        !image ||
-        !image.complete ||
-        image.naturalWidth === 0 ||
-        image.naturalHeight === 0
-      ) {
-        return;
-      }
-
-      // Match the board image using the same piece-specific size.
-      // The existing ship holder occupies 72% of the square.
-      const imageSize = SHIP_IMAGE_SIZES[piece.type] ?? 82;
-
-      const imageBoxSize =
-        this.cellSize * 0.72 * (imageSize / 100);
-
-      // Preserve the ship image's aspect ratio.
-      const scale = Math.min(
-        imageBoxSize / image.naturalWidth,
-        imageBoxSize / image.naturalHeight
-      );
-
-      const width = image.naturalWidth * scale;
-      const height = image.naturalHeight * scale;
-
-      // Match the existing board rotation convention.
-      // Source PNGs are assumed to face right.
-      const restingAngle = piece.color === 'w'
-        ? -Math.PI / 2
-        : Math.PI / 2;
-
-      const rotation = Number.isFinite(angle)
-        ? angle
-        : restingAngle;
-
-      ctx.save();
-
-      try {
-        ctx.translate(cx, cy);
-        ctx.rotate(rotation);
-        ctx.globalAlpha *= Math.max(0, Math.min(1, opacity));
-        ctx.shadowBlur = 0;
-        ctx.imageSmoothingEnabled = true;
-
-        // Center the transparent PNG on the battle position.
-        ctx.drawImage(
-          image,
-          -width / 2,
-          -height / 2,
-          width,
-          height
-        );
-      } finally {
-        ctx.restore();
-      }
-    }
-  }
-
-  // Initialize on DOM load
-  window.addEventListener('DOMContentLoaded', () => {
-    global.ArmadaApp = new CosmicArmadaApp();
+ }
+ setFleet(side,value){
+  if(!['w','b'].includes(side))return;
+  this.fleetIds[side]=this.F.normalizeFleetId(value,this.F.defaultIds[side]);
+  (side==='w'?this.playerFleetSelector:this.enemyFleetSelector).value=this.fleetIds[side];
+  try{localStorage.setItem(PREF_KEYS[side],this.fleetIds[side]);}catch(error){}
+  this.preloadShips();
+ }
+ initEvents(){
+  window.addEventListener('resize',()=>this.handleResize());
+  document.addEventListener('visibilitychange',()=>{this.resetFrameClock=true;});
+  window.addEventListener('keydown',e=>{
+   const tag=e.target&&e.target.tagName;
+   if(e.code==='Space'&&!['SELECT','INPUT','BUTTON','TEXTAREA'].includes(tag)&&this.battleEngine.isBusy()){e.preventDefault();this.skipAnimation();}
   });
+  this.skipBtn.addEventListener('click',()=>this.skipAnimation());this.undoBtn.addEventListener('click',()=>this.undoMove());this.newGameBtn.addEventListener('click',()=>this.initGame());
+  this.saveBtn.addEventListener('click',()=>this.saveFleet());this.loadBtn.addEventListener('click',()=>this.loadFleet());
+  document.querySelectorAll('.ai-btn').forEach(btn=>btn.addEventListener('click',()=>{
+   document.querySelectorAll('.ai-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');this.aiDifficulty=parseInt(btn.dataset.level,10)||2;
+  }));
+  const bind=(id,fn)=>{const el=document.getElementById(id);if(el)el.addEventListener('click',fn);};
+  bind('start-action-btn',()=>{this.startModal.style.display='none';this.audio('resume');this.resetFrameClock=true;this.handleResize();});
+  bind('retry-action-btn',()=>this.initGame());bind('victory-action-btn',()=>this.initGame());
+  document.querySelectorAll('.promo-option').forEach(btn=>btn.addEventListener('click',()=>{
+   const type=btn.dataset.piece;if(!this.pendingPromoMove||!['q','r','b','n'].includes(type))return;
+   const move={...this.pendingPromoMove,promotion:type};this.pendingPromoMove=null;this.promoModal.style.display='none';this.executeMove(move);
+  }));
+ }
+ initAudioUI(){
+  if(!global.ArmadaAudio){this.volumeSlider.disabled=true;this.muteBtn.disabled=true;return;}
+  const volume=this.audio('getVolume');if(Number.isFinite(volume))this.volumeSlider.value=Math.round(volume*100);
+  this.volumeSlider.addEventListener('input',e=>this.audio('setVolume',parseFloat(e.target.value)/100));
+  this.muteBtn.addEventListener('click',()=>{this.muteBtn.style.opacity=this.audio('toggleMute')?'0.4':'1';});
+ }
+ handleResize(){
+  if(this.battleEngine.isBusy()){this.needsResize=true;return;}
+  this.needsResize=false;
+  const arena=document.getElementById('arena'),header=document.getElementById('hud-header'),footer=document.getElementById('hud-footer');
+  const width=arena.clientWidth||window.innerWidth;
+  const height=arena.clientHeight||(window.innerHeight-header.getBoundingClientRect().height-footer.getBoundingClientRect().height);
+  const available=Math.max(96,Math.min(width,height)-16);
+  let board=Math.floor(available/8)*8;
+  while(board>64&&board+2*Math.max(20,Math.round(board/8*.28))>available)board-=8;
+  this.boardSize=board;this.cellSize=board/8;this.gutterSize=Math.max(20,Math.round(this.cellSize*.28));
+  const total=board+this.gutterSize*2;
+  document.documentElement.style.setProperty('--board-size',`${board}px`);document.documentElement.style.setProperty('--gutter-size',`${this.gutterSize}px`);
+  this.boardContainer.style.width=`${total}px`;this.boardContainer.style.height=`${total}px`;
+  this.pixelRatio=Math.max(1,Math.min(MAX_PIXEL_RATIO,window.devicePixelRatio||1));
+  this.fxCanvas.width=Math.round(total*this.pixelRatio);this.fxCanvas.height=Math.round(total*this.pixelRatio);
+  this.fxCanvas.style.width=`${total}px`;this.fxCanvas.style.height=`${total}px`;
+  // All flight calculations stay in logical CSS pixels, never backing pixels.
+  this.battleEngine.setCanvas(this.fxCanvas,total,total);
+  this.squarePxText.textContent=`Square: ~${Math.round(this.cellSize)}px`;this.renderBoard();
+  const holder=this.chessGrid.querySelector('.ship-rim');
+  const rect=holder&&holder.getBoundingClientRect();
+  this.shipHolderSize=rect&&rect.width>0?Math.min(rect.width,rect.height):this.cellSize*.72;
+ }
+ cancelPendingWork(){this.session++;if(this.aiTimer!==null)clearTimeout(this.aiTimer);this.aiTimer=null;this.isAiThinking=false;this.battleEngine.cancelAnimation();this.resetFrameClock=true;}
+ initGame(){
+  this.cancelPendingWork();this.audio('resume');this.state=validateBasicState(this.E.createInitialState());this.score=0;this.movesCount=0;
+  this.selectedSquare=null;this.legalDestinations=[];this.lastMove=null;this.pendingPromoMove=null;
+  this.promoModal.style.display='none';this.gameOverModal.style.display='none';this.victoryModal.style.display='none';
+  document.getElementById('game-over-title').textContent='FLAGSHIP DESTROYED';
+  this.preloadShips();this.updateHUD();this.renderBoard();this.handleResize();
+ }
+ ended(){return Boolean(this.state&&(this.state.isGameOver||this.state.isCheckmate||this.state.isDraw));}
+ updateHUD(){
+  if(!this.state)return;const white=this.state.turn==='w',busy=this.battleEngine.isBusy(),locked=this.controlsLocked();
+  this.turnPill.className=`turn-pill ${white?'':'black-turn'}`;
+  this.turnText.textContent=this.ended()?'GAME COMPLETE':this.isAiThinking?'AI THINKING...':busy?'ENGAGEMENT COMBAT':white?'YOUR TURN':'AI OPPONENT';
+  this.checkAlert.style.display=this.state.isCheck&&!this.state.isCheckmate?'flex':'none';this.scoreText.textContent=`SCORE: ${this.score}`;
+  this.whiteCapText.textContent=this.state.capturedByWhite.length;this.blackCapText.textContent=this.state.capturedByBlack.length;this.movesText.textContent=`Moves: ${this.movesCount}`;
+  this.undoBtn.disabled=this.state.history.length<2||locked;this.skipBtn.style.display=busy?'flex':'none';
+  this.saveBtn.disabled=locked;this.loadBtn.disabled=locked;this.playerFleetSelector.disabled=locked;this.enemyFleetSelector.disabled=locked;
+  this.playerFleetSelector.value=this.fleetIds.w;this.enemyFleetSelector.value=this.fleetIds.b;
+  this.playerFleetLabel.textContent=`White: ${this.F.getFleetById(this.fleetIds.w).name}`;
+  this.enemyFleetLabel.textContent=`Black: ${this.F.getFleetById(this.fleetIds.b).name}`;
+ }
+ squareToCanvas(r,c){
+  // Match the actual DOM ship center, including grid borders and holder offset.
+  // The supplied stylesheet puts the holder at top:5%, height:72% (center 41%).
+  const square=this.chessGrid.querySelector(`.square[data-r="${r}"][data-c="${c}"]`);
+  if(square){
+   const canvas=this.fxCanvas.getBoundingClientRect(),rim=square.querySelector('.ship-rim');
+   if(rim){const rect=rim.getBoundingClientRect();return {x:rect.left-canvas.left+rect.width/2,y:rect.top-canvas.top+rect.height/2};}
+   const rect=square.getBoundingClientRect();
+   return {x:rect.left-canvas.left+square.clientLeft+square.clientWidth/2,
+    y:rect.top-canvas.top+square.clientTop+square.clientHeight*.41};
+  }
+  return {x:this.gutterSize+(c+.5)*this.cellSize,y:this.gutterSize+(r+.41)*this.cellSize};
+ }
+ capturedSquare(move){return move.capturedSquare||(move.isEnPassant?{r:move.from.r,c:move.to.c}:move.to);}
+ renderBoard(){
+  if(!this.state)return;this.chessGrid.innerHTML='';const {board,isCheck}=this.state,kingPos=isCheck?this.E.findKing(board,this.state.turn):null;
+  const animation=this.battleEngine.activeBattle||this.battleEngine.activeGlide,animatedMove=animation&&animation.move;
+  this.renderedAnimation=animation||null;
+  const captured=this.battleEngine.activeBattle&&this.capturedSquare(this.battleEngine.activeBattle.move);
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+   const el=document.createElement('div');el.className=`square ${(r+c)%2?'dark':'light'}`;el.dataset.r=r;el.dataset.c=c;
+   if(this.selectedSquare&&this.selectedSquare.r===r&&this.selectedSquare.c===c)el.classList.add('selected');
+   if(this.lastMove&&((this.lastMove.from.r===r&&this.lastMove.from.c===c)||(this.lastMove.to.r===r&&this.lastMove.to.c===c)))el.classList.add('last-move');
+   if(kingPos&&kingPos.r===r&&kingPos.c===c)el.classList.add('check-alert');
+   const dest=this.legalDestinations.find(m=>m.to.r===r&&m.to.c===c);if(dest)el.classList.add(dest.captured?'legal-capture':'legal-move');
+   const hiddenAttacker=animatedMove&&animatedMove.from.r===r&&animatedMove.from.c===c,hiddenDefender=captured&&captured.r===r&&captured.c===c;
+   if(board[r][c]&&!hiddenAttacker&&!hiddenDefender)el.appendChild(this.createPieceElement(board[r][c]));
+   el.addEventListener('pointerdown',e=>{e.stopPropagation();this.handleSquareClick(r,c);});this.chessGrid.appendChild(el);
+  }
+ }
+ createPieceElement(piece){
+  const a=this.F.getShip(piece,this.fleetIds),record=this.getShipAsset(piece);
+  const token=document.createElement('div');token.className=`piece-token color-${piece.color}`;token.dataset.piece=piece.type;token.dataset.fleet=a.fleet.id;
+  const rim=document.createElement('div');rim.className='ship-rim';
+  const size=el=>{el.style.width=`${a.size}%`;el.style.height=`${a.size}%`;el.style.flexShrink='0';};
+  const img=document.createElement('img');img.className='ship-graphic';img.alt=`${a.fleet.name} ${PIECE_TITLES[piece.type]}`;img.draggable=false;size(img);
+  let attempt=Math.min(record.attempt,record.sources.length-1);
+  const applySource=()=>{const source=record.sources[attempt];img.style.transform=`rotate(${a.rotation-source.forward}rad)`;img.src=source.src;};
+  img.onerror=()=>{
+   attempt++;
+   if(attempt<record.sources.length){applySource();return;}
+   rim.innerHTML=getProceduralShipSvg(piece.type,a.fleet);const svg=rim.querySelector('svg');
+   if(svg){size(svg);svg.style.transform=`rotate(${a.rotation+Math.PI/2}rad)`;}
+  };
+  rim.appendChild(img);token.appendChild(rim);applySource();
+  const badge=document.createElement('div');badge.className='emblem-badge';
+  const glyph=document.createElement('span');glyph.className='emblem-glyph';glyph.textContent=PIECE_GLYPHS[piece.type];glyph.style.display='none';
+  const marker=document.createElement('img');marker.className='emblem-icon';marker.alt='';marker.draggable=false;
+  marker.onerror=()=>{marker.style.display='none';glyph.style.display='inline';};marker.src=MARKER_IMAGES[piece.type];
+  const label=document.createElement('span');label.className='emblem-text';label.textContent=PIECE_NAMES[piece.type];
+  badge.appendChild(marker);badge.appendChild(glyph);badge.appendChild(label);token.appendChild(badge);return token;
+ }
+ getShipAsset(piece){
+  const a=this.F.getShip(piece,this.fleetIds),key=JSON.stringify([a.fleet.id,piece.type,a.src,a.fallbackSrc]);
+  if(this.canvasShipImages.has(key))return this.canvasShipImages.get(key);
+  const sources=[{src:a.src,forward:a.artForwardAngle}];
+  if(a.src!==a.fallbackSrc)sources.push({src:a.fallbackSrc,forward:0});
+  sources.push({src:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(getProceduralShipSvg(piece.type,a.fleet)),forward:-Math.PI/2});
+  const image=new Image(),record={image,sources,attempt:0,ready:false,source:sources[0]};this.canvasShipImages.set(key,record);
+  image.onload=()=>{record.ready=Boolean(image.naturalWidth&&image.naturalHeight);};
+  image.onerror=()=>{
+   record.ready=false;record.attempt++;
+   if(record.attempt<sources.length){record.source=sources[record.attempt];image.src=record.source.src;}
+   else record.source=null;
+  };
+  image.src=record.source.src;return record;
+ }
+ preloadShips(){for(const color of ['w','b'])for(const type of this.F.types)this.getShipAsset({type,color});}
+ handleSquareClick(r,c){
+  if(!this.state||this.ended()||this.state.turn==='b'||this.controlsLocked())return;
+  if(this.selectedSquare){const move=this.legalDestinations.find(m=>m.to.r===r&&m.to.c===c);if(move){
+   if(move.piece.type==='p'&&(move.to.r===0||move.to.r===7)){this.pendingPromoMove=move;this.promoModal.style.display='flex';this.audio('playConfirmSelect');this.updateHUD();return;}
+   this.executeMove(move);return;
+  }}
+  const piece=this.state.board[r][c];
+  if(piece&&piece.color===this.state.turn){this.selectedSquare={r,c};this.legalDestinations=this.E.getLegalMovesForSquare(this.state,r,c);this.audio('playCrispClick');}
+  else{this.selectedSquare=null;this.legalDestinations=[];}this.renderBoard();
+ }
+ presentResult(){
+  if(this.state.isCheckmate){
+   if(this.state.winner==='w'||this.state.turn==='b'){this.audio('playVictoryFanfare');document.getElementById('victory-score').textContent=`Sector Secured! Final Score: ${this.score}`;this.victoryModal.style.display='flex';}
+   else{this.audio('playDefeatMotif');document.getElementById('game-over-title').textContent='FLAGSHIP DESTROYED';document.getElementById('game-over-desc').textContent=`Command Citadel destroyed. Final Score: ${this.score}`;this.gameOverModal.style.display='flex';}
+  }else if(this.state.isDraw){
+   const reasons={'stalemate':'Stalemate','dead-position':'Dead position','fivefold-repetition':'Fivefold repetition','seventy-five-move-rule':'75-move rule','threefold-repetition':'Threefold repetition','fifty-move-rule':'50-move rule','agreement':'Draw by agreement'};
+   document.getElementById('game-over-title').textContent='TACTICAL DRAW';document.getElementById('game-over-desc').textContent=`${reasons[this.state.drawReason]||'Draw'}. Final Score: ${this.score}`;this.gameOverModal.style.display='flex';
+  }
+ }
+ executeMove(move){
+  if(this.ended()||this.battleEngine.isBusy())return;this.audio('resume');this.selectedSquare=null;this.legalDestinations=[];this.lastMove=move;
+  const from=this.squareToCanvas(move.from.r,move.from.c),to=this.squareToCanvas(move.to.r,move.to.c),session=this.session;
+  const complete=()=>{
+   if(session!==this.session)return;
+   this.state=validateBasicState(this.E.makeMove(this.state,move));this.movesCount++;
+   if(move.captured&&move.piece.color==='w')this.score+=SCORE_VALUES[move.captured.type]||100;
+   this.renderBoard();this.updateHUD();this.presentResult();if(this.needsResize)this.handleResize();
+   if(!this.ended()){if(this.state.isCheck)this.audio('playErrorBuzz');else this.audio(move.captured?'playGunshotBlast':'playCrispClick');}
+   if(this.state.turn==='b'&&!this.ended())this.triggerAiTurn();
+  };
+  if(move.captured){
+   const captured=this.capturedSquare(move);
+   this.battleEngine.startBattle(move,from,to,complete,{defenderCoords:this.squareToCanvas(captured.r,captured.c),
+    attackerHeading:this.F.getShip(move.piece,this.fleetIds).rotation,
+    defenderHeading:this.F.getShip(move.captured,this.fleetIds).rotation});
+  }else this.battleEngine.startGlide(move,from,to,complete);
+  this.resetFrameClock=true;this.renderBoard();this.updateHUD();
+ }
+ triggerAiTurn(){
+  if(this.isAiThinking||this.ended()||this.state.turn!=='b')return;this.isAiThinking=true;this.updateHUD();const session=this.session;
+  this.aiTimer=setTimeout(()=>{
+   this.aiTimer=null;if(session!==this.session)return;
+   if(!this.state||this.state.turn!=='b'||this.ended()){this.isAiThinking=false;this.updateHUD();return;}
+   try{
+    const best=this.E.findBestMove(this.state,this.aiDifficulty);this.isAiThinking=false;
+    if(best)this.executeMove(best);
+    else{if(typeof this.E.getGameStatus==='function')Object.assign(this.state,this.E.getGameStatus(this.state));this.updateHUD();this.presentResult();}
+   }catch(error){this.isAiThinking=false;this.updateHUD();console.error('AI move failed:',error);}
+  },400);
+ }
+ skipAnimation(){this.battleEngine.skipAnimation();this.updateHUD();}
+ undoMove(){
+  if(!this.state||this.state.history.length<2||this.controlsLocked()){this.audio('playErrorBuzz');return;}
+  this.audio('playCrispClick');let state=this.E.createInitialState();const history=this.state.history,count=history.length-2;
+  for(let i=0;i<count;i++)state=this.E.makeMove(state,history[i]);
+  this.state=validateBasicState(state);this.lastMove=count?state.history[count-1]:null;this.selectedSquare=null;this.legalDestinations=[];this.movesCount=count;
+  this.score=state.history.reduce((total,m)=>total+(m.captured&&m.piece.color==='w'?(SCORE_VALUES[m.captured.type]||100):0),0);
+  this.gameOverModal.style.display='none';this.victoryModal.style.display='none';this.renderBoard();this.updateHUD();
+ }
+ saveFleet(){
+  if(!this.state||this.controlsLocked())return;
+  try{
+   localStorage.setItem(SAVE_KEY,JSON.stringify({version:4,state:this.state,score:this.score,movesCount:this.movesCount,
+    playerFleetId:this.fleetIds.w,enemyFleetId:this.fleetIds.b,fleetIds:{...this.fleetIds},aiDifficulty:this.aiDifficulty}));
+   this.audio('playConfirmSelect');alert('Deployment and both fleet selections saved.');
+  }catch(error){console.error('Save failed:',error);alert('Could not save deployment in this browser.');}
+ }
+ loadFleet(){
+  if(this.controlsLocked())return;
+  try{
+   const raw=localStorage.getItem(SAVE_KEY);if(!raw){alert('No saved deployment found.');return;}const saved=JSON.parse(raw);
+   if(!saved||typeof saved!=='object')throw Error('Invalid save data.');
+   let candidate=saved.state;
+   if(!candidate){
+    const legacy=validateBasicState({...saved});candidate=legacy;
+    if(legacy.history.length){
+     try{let replay=this.E.createInitialState();for(const move of legacy.history)replay=this.E.makeMove(replay,move);if(positionIdentity(replay)===positionIdentity(legacy))candidate=replay;}
+     catch(error){console.warn('Legacy history could not be replayed; checking saved state.',error);}
+    }
+   }
+   validateBasicState(candidate);
+   if(typeof this.E.validateState==='function'&&this.E.validateState(candidate)===false)throw Error('Chess engine rejected the saved state.');
+   if(typeof this.E.getGameStatus==='function')Object.assign(candidate,this.E.getGameStatus(candidate));
+   const ids=saved.fleetIds&&typeof saved.fleetIds==='object'?saved.fleetIds:{};
+   const playerId=ids.w!==undefined?ids.w:saved.playerFleetId!==undefined?saved.playerFleetId:this.fleetIds.w;
+   const enemyId=ids.b!==undefined?ids.b:saved.enemyFleetId!==undefined?saved.enemyFleetId:this.fleetIds.b;
+   this.cancelPendingWork();this.state=candidate;this.score=Number.isFinite(saved.score)?saved.score:0;this.movesCount=Number.isFinite(saved.movesCount)?saved.movesCount:candidate.history.length;
+   this.setFleet('w',playerId);this.setFleet('b',enemyId);
+   this.aiDifficulty=[1,2,3].includes(saved.aiDifficulty)?saved.aiDifficulty:this.aiDifficulty;
+   document.querySelectorAll('.ai-btn').forEach(btn=>btn.classList.toggle('active',Number(btn.dataset.level)===this.aiDifficulty));
+   this.lastMove=candidate.history.length?candidate.history[candidate.history.length-1]:null;this.selectedSquare=null;this.legalDestinations=[];this.pendingPromoMove=null;
+   this.promoModal.style.display='none';this.startModal.style.display='none';this.gameOverModal.style.display='none';this.victoryModal.style.display='none';
+   this.renderBoard();this.updateHUD();this.handleResize();this.presentResult();this.audio('playConfirmSelect');
+   if(this.state.turn==='b'&&!this.ended())this.triggerAiTurn();
+  }catch(error){console.error('Load failed:',error);alert('Could not load this deployment.');}
+ }
+ applyShake(amount,time){
+  if(amount<=0){this.boardContainer.style.transform='none';return;}
+  const t=Number.isFinite(time)?time:performance.now()/1000;
+  const x=(Math.sin(t*41)+.35*Math.sin(t*73))*.36*amount;
+  const y=(Math.sin(t*47+.7)+.3*Math.sin(t*67))*.36*amount;
+  this.boardContainer.style.transform=`translate(${x}px, ${y}px)`;
+ }
+ startLoop(){
+  let lastTime=null;
+  const loop=now=>{
+   let dt=lastTime===null||this.resetFrameClock||document.hidden?0:Math.max(0,Math.min(.25,(now-lastTime)/1000));
+   lastTime=now;this.resetFrameClock=false;
+   const ratio=Math.max(1,Math.min(MAX_PIXEL_RATIO,window.devicePixelRatio||1));
+   if(Math.abs(ratio-this.pixelRatio)>.001){if(this.battleEngine.isBusy())this.needsResize=true;else this.handleResize();}
+   this.battleEngine.update(dt); // Internally bounded steps; one render per browser frame.
+   const animation=this.battleEngine.activeBattle||this.battleEngine.activeGlide||null;
+   if(animation!==this.renderedAnimation){this.renderBoard();this.updateHUD();}
+   this.battleEngine.render((ctx,piece,x,y,opacity,angle)=>this.drawPieceCanvas(ctx,piece,x,y,opacity,angle));
+   requestAnimationFrame(loop);
+  };requestAnimationFrame(loop);
+ }
+ drawPieceCanvas(ctx,piece,cx,cy,opacity=1,angle){
+  if(!piece)return;const a=this.F.getShip(piece,this.fleetIds),record=this.getShipAsset(piece),image=record.image;
+  const box=(this.shipHolderSize||this.cellSize*.72)*(a.size/100),heading=Number.isFinite(angle)?angle:a.rotation;
+  ctx.save();
+  try{
+   ctx.translate(cx,cy);ctx.globalAlpha*=Math.max(0,Math.min(1,opacity));ctx.shadowBlur=0;ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+   if(record.ready&&record.source&&image.complete&&image.naturalWidth&&image.naturalHeight){
+    ctx.rotate(heading-record.source.forward);
+    const scale=Math.min(box/image.naturalWidth,box/image.naturalHeight),width=image.naturalWidth*scale,height=image.naturalHeight*scale;
+    ctx.drawImage(image,-width/2,-height/2,width,height);
+   }else{
+    ctx.rotate(heading);ctx.fillStyle=a.fleet.primary;ctx.beginPath();ctx.moveTo(box*.45,0);ctx.lineTo(-box*.35,-box*.3);ctx.lineTo(-box*.2,0);ctx.lineTo(-box*.35,box*.3);ctx.closePath();ctx.fill();
+   }
+  }finally{ctx.restore();}
+ }
+}
+function boot(){
+ if(global.ArmadaApp)return;
+ try{global.ArmadaApp=new CosmicArmadaApp();}
+ catch(error){
+  console.error('Cosmic Armada startup failed:',error);
+  const modal=document.getElementById('start-modal');
+  const title=modal&&modal.querySelector('.modal-title'),desc=modal&&modal.querySelector('.modal-desc'),button=document.getElementById('start-action-btn');
+  if(modal)modal.style.display='flex';if(title)title.textContent='STARTUP ERROR';if(desc)desc.textContent=error.message;
+  if(button){button.disabled=true;button.textContent='CHECK LOCAL FILES';}
+ }
+}
+global.CosmicArmadaApp=CosmicArmadaApp;
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
