@@ -1,0 +1,1119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Cosmic Gambit — Quick AI Test</title>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #0b1220;
+      color: #edf2fa;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      max-width: 1000px;
+      margin: 30px auto;
+      padding: 0 18px;
+    }
+
+    h1 {
+      margin-bottom: 8px;
+    }
+
+    p {
+      line-height: 1.5;
+      color: #b5c4d8;
+    }
+
+    .card {
+      background: #142137;
+      border: 1px solid #30445e;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 18px 0;
+    }
+
+    .controls {
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    label {
+      display: grid;
+      gap: 8px;
+    }
+
+    input,
+    button {
+      font: inherit;
+      border: 1px solid #526980;
+      border-radius: 7px;
+      padding: 11px;
+    }
+
+    input {
+      width: 130px;
+      background: #091426;
+      color: white;
+    }
+
+    button {
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+
+    #stop {
+      background: #a62b3e;
+    }
+
+    #save {
+      background: #30445e;
+    }
+
+    .scroll {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    td,
+    th {
+      padding: 12px 9px;
+      text-align: left;
+      border-bottom: 1px solid #30445e;
+      white-space: nowrap;
+    }
+
+    progress {
+      width: 100%;
+      height: 22px;
+    }
+
+    #status {
+      font-size: 1.1rem;
+      color: #edf2fa;
+    }
+
+    #error {
+      display: none;
+      color: #fecaca;
+      background: #451a23;
+      border: 1px solid #a62b3e;
+      border-radius: 8px;
+      padding: 14px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    small {
+      color: #b5c4d8;
+    }
+
+    details {
+      margin: 20px 0;
+    }
+
+    summary {
+      cursor: pointer;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      max-height: 320px;
+      overflow: auto;
+      font: 13px Consolas, monospace;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Quick AI Test</h1>
+
+  <p>
+    Run games automatically and compare your three difficulty levels.
+  </p>
+
+  <div class="card">
+    <div class="controls">
+      <label>
+        Total games
+        <input
+          id="count"
+          type="number"
+          min="6"
+          max="3000"
+          step="6"
+          value="30"
+        >
+      </label>
+
+      <button id="start" type="button" disabled>Start Tests</button>
+      <button id="stop" type="button" disabled>Stop</button>
+      <button id="save" type="button" disabled>Save Results</button>
+    </div>
+
+    <p id="plan"></p>
+
+    <small>
+      Up to 16 games at once. Your AI settings stay unchanged.
+      Save results before closing this page.
+    </small>
+  </div>
+
+  <div class="card">
+    <p id="status" role="status" aria-live="polite">Loading…</p>
+
+    <progress id="progress" max="1" value="0"></progress>
+
+    <p id="verdict">Run a test to compare the levels.</p>
+
+    <div id="error" role="alert"></div>
+  </div>
+
+  <div class="card">
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Level</th>
+            <th>Wins</th>
+            <th>Losses</th>
+            <th>Draws</th>
+            <th>Win rate</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody id="levels"></tbody>
+      </table>
+    </div>
+
+    <p>
+      <small>
+        Win rate counts wins only. Score gives half a point for draws.
+        Unfinished, stopped, and error games are excluded.
+      </small>
+    </p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Matchup</th>
+            <th>First wins</th>
+            <th>Second wins</th>
+            <th>Draws</th>
+          </tr>
+        </thead>
+        <tbody id="pairs"></tbody>
+      </table>
+    </div>
+
+    <p id="excluded">Unfinished: 0 · Stopped: 0 · Errors: 0</p>
+  </div>
+
+  <details>
+    <summary>Technical details</summary>
+    <pre id="details"></pre>
+  </details>
+
+  <script>
+    window.addEventListener('error', function (event) {
+      const box = document.getElementById('error');
+
+      if (!box) return;
+
+      let message = event.message || '';
+
+      if (!message && event.target && event.target.src) {
+        message = 'Could not load: ' + event.target.src;
+      }
+
+      if (!message) return;
+
+      box.style.display = 'block';
+      box.textContent =
+        message +
+        (event.filename
+          ? '\n' + event.filename + ':' + event.lineno
+          : '');
+    }, true);
+
+    window.addEventListener('unhandledrejection', function (event) {
+      const box = document.getElementById('error');
+
+      if (!box) return;
+
+      const reason = event.reason;
+
+      box.style.display = 'block';
+      box.textContent = String(
+        reason && reason.message ? reason.message : reason
+      );
+    });
+  </script>
+
+  <script src="./chess.js"></script>
+  <script src="./stockfish-ai.js"></script>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const $ = id => document.getElementById(id);
+
+      const PARALLEL_GAMES = 16;
+      const MAX_PLIES = 400;
+      const MOVE_TIMEOUT_MS = 60000;
+
+      const NAMES = {
+        1: 'Cadet',
+        2: 'Captain',
+        3: 'Admiral'
+      };
+
+      const MATCHUPS = [
+        { id: 'cadet-captain', first: 1, second: 2 },
+        { id: 'cadet-admiral', first: 1, second: 3 },
+        { id: 'captain-admiral', first: 2, second: 3 }
+      ];
+
+      const OPENINGS = [
+        ['e2e4', 'e7e5', 'g1f3', 'b8c6'],
+        ['d2d4', 'd7d5', 'c2c4', 'e7e6'],
+        ['e2e4', 'c7c5', 'g1f3', 'd7d6'],
+        ['c2c4', 'e7e5', 'b1c3', 'g8f6'],
+        ['g1f3', 'd7d5', 'g2g3', 'g8f6'],
+        ['e2e4', 'c7c6', 'd2d4', 'd7d5'],
+        ['d2d4', 'g8f6', 'c2c4', 'g7g6'],
+        ['e2e4', 'e7e6', 'd2d4', 'd7d5']
+      ];
+
+      const active = new Set();
+
+      let E = null;
+      let AI = null;
+      let running = false;
+      let stopping = false;
+      let fatal = false;
+      let startTime = 0;
+      let ticker = null;
+
+      let report = {
+        version: 5,
+        planned: 0,
+        elapsedMs: 0,
+        games: []
+      };
+
+      const sleep = milliseconds =>
+        new Promise(resolve => setTimeout(resolve, milliseconds));
+
+      function log(message) {
+        const lines = (
+          $('details').textContent + '\n' + String(message)
+        ).trim().split('\n');
+
+        $('details').textContent = lines.slice(-120).join('\n');
+      }
+
+      function showError(error) {
+        const message = String(
+          error && error.message ? error.message : error
+        );
+
+        $('error').style.display = 'block';
+        $('error').textContent = message;
+
+        log(error && error.stack ? error.stack : message);
+      }
+
+      function requestedGames() {
+        const value = Number($('count').value);
+
+        if (!Number.isFinite(value)) return 30;
+
+        return Math.min(
+          3000,
+          Math.max(6, Math.ceil(value / 6) * 6)
+        );
+      }
+
+      function updatePlan() {
+        const count = requestedGames();
+
+        $('plan').textContent =
+          count + ' games total · ' +
+          (count / 3) + ' per matchup · colors alternated';
+      }
+
+      function moveId(move) {
+        return (
+          String.fromCharCode(97 + move.from.c) +
+          (8 - move.from.r) +
+          String.fromCharCode(97 + move.to.c) +
+          (8 - move.to.r) +
+          String(move.promotion || '').toLowerCase()
+        );
+      }
+
+      function applyMove(state, move) {
+        const next = E.makeMove(state, move);
+
+        if (!next || typeof next !== 'object') {
+          throw new Error(
+            'ChessEngine.makeMove() did not return a game state.'
+          );
+        }
+
+        return next;
+      }
+
+      function initialState(opening) {
+        let state = E.createInitialState();
+
+        for (const uci of opening) {
+          const legal = E.getLegalMoves(state).find(
+            move => moveId(move) === uci
+          );
+
+          if (!legal) {
+            throw new Error('Opening move rejected: ' + uci);
+          }
+
+          state = applyMove(state, legal);
+        }
+
+        return state;
+      }
+
+      function outcome(state) {
+        const raw = E.getGameStatus(state);
+
+        if (!raw || typeof raw !== 'object') {
+          throw new Error(
+            'ChessEngine.getGameStatus() must return a status object.'
+          );
+        }
+
+        const status = Object.assign({}, state, raw);
+
+        if (status.isCheckmate) {
+          const winner =
+            status.winner === 'w' || status.winner === 'b'
+              ? status.winner
+              : state.turn === 'w' ? 'b' : 'w';
+
+          return {
+            winner,
+            reason: 'checkmate'
+          };
+        }
+
+        if (status.isDraw) {
+          return {
+            winner: null,
+            reason: status.drawReason || 'draw'
+          };
+        }
+
+        if (status.isGameOver) {
+          if (status.winner === 'w' || status.winner === 'b') {
+            return {
+              winner: status.winner,
+              reason: 'game over'
+            };
+          }
+
+          throw new Error(
+            'Game ended without a recognized winner or draw flag.'
+          );
+        }
+
+        return null;
+      }
+
+      function addRow(body, values) {
+        const row = document.createElement('tr');
+
+        for (const value of values) {
+          const cell = document.createElement('td');
+          cell.textContent = value;
+          row.appendChild(cell);
+        }
+
+        body.appendChild(row);
+      }
+
+      function matchupStats(matchup) {
+        const stats = {
+          first: 0,
+          second: 0,
+          draws: 0,
+          total: 0
+        };
+
+        for (const game of report.games) {
+          if (
+            game.status !== 'completed' ||
+            game.matchup !== matchup.id
+          ) {
+            continue;
+          }
+
+          stats.total++;
+
+          if (game.winnerLevel === matchup.first) {
+            stats.first++;
+          } else if (game.winnerLevel === matchup.second) {
+            stats.second++;
+          } else {
+            stats.draws++;
+          }
+        }
+
+        return stats;
+      }
+
+      function render() {
+        $('levels').textContent = '';
+        $('pairs').textContent = '';
+
+        for (const level of [1, 2, 3]) {
+          let wins = 0;
+          let losses = 0;
+          let draws = 0;
+
+          for (const game of report.games) {
+            if (
+              game.status !== 'completed' ||
+              (game.white !== level && game.black !== level)
+            ) {
+              continue;
+            }
+
+            if (game.winnerLevel === null) {
+              draws++;
+            } else if (game.winnerLevel === level) {
+              wins++;
+            } else {
+              losses++;
+            }
+          }
+
+          const finished = wins + losses + draws;
+
+          addRow($('levels'), [
+            NAMES[level],
+            wins,
+            losses,
+            draws,
+            finished
+              ? (100 * wins / finished).toFixed(1) + '%'
+              : '—',
+            finished
+              ? (100 * (wins + draws / 2) / finished).toFixed(1) + '%'
+              : '—'
+          ]);
+        }
+
+        let enoughGames = true;
+        let ordered = true;
+
+        for (const matchup of MATCHUPS) {
+          const stats = matchupStats(matchup);
+
+          addRow($('pairs'), [
+            NAMES[matchup.first] + ' vs ' + NAMES[matchup.second],
+            stats.first,
+            stats.second,
+            stats.draws
+          ]);
+
+          if (stats.total < 10) enoughGames = false;
+          if (stats.second <= stats.first) ordered = false;
+        }
+
+        const countStatus = status =>
+          report.games.filter(game => game.status === status).length;
+
+        $('excluded').textContent =
+          'Unfinished: ' + countStatus('unfinished') +
+          ' · Stopped: ' + countStatus('stopped') +
+          ' · Errors: ' + countStatus('error');
+
+        $('progress').max = Math.max(1, report.planned);
+        $('progress').value = report.games.length;
+        $('save').disabled = report.games.length === 0;
+
+        if (!report.games.length) {
+          $('verdict').textContent = running
+            ? 'Waiting for the first games to finish.'
+            : 'Run a test to compare the levels.';
+        } else if (!enoughGames) {
+          $('verdict').textContent =
+            'Early results — fewer than 10 finished games in at least one matchup.';
+        } else if (ordered) {
+          $('verdict').textContent =
+            'This batch favors the intended order: ' +
+            'Cadet weakest, Captain in the middle, Admiral strongest. ' +
+            'This does not establish human win rates or Elo.';
+        } else {
+          $('verdict').textContent =
+            'This batch does not show a clear difficulty order. ' +
+            'Compare the head-to-head results.';
+        }
+      }
+
+      function updateStatus() {
+        if (!report.planned) {
+          $('status').textContent =
+            'Ready. Choose a game count and click Start Tests.';
+          return;
+        }
+
+        const completed = report.games.filter(
+          game => game.status === 'completed'
+        ).length;
+
+        const elapsed = running
+          ? performance.now() - startTime
+          : report.elapsedMs;
+
+        let prefix;
+
+        if (running) {
+          prefix = stopping ? 'Stopping… ' : 'Running — ';
+        } else if (report.outcome === 'error') {
+          prefix = 'Stopped on error. ';
+        } else if (report.outcome === 'stopped') {
+          prefix = 'Stopped. ';
+        } else {
+          prefix = 'Done. ';
+        }
+
+        $('status').textContent =
+          prefix +
+          report.games.length + ' / ' + report.planned + ' recorded' +
+          ' · ' + completed + ' finished' +
+          ' · ' + active.size + ' active' +
+          ' · ' + (elapsed / 60000).toFixed(1) + ' min';
+      }
+
+      function verify() {
+        if (!/^https?:$/.test(location.protocol)) {
+          throw new Error(
+            'Open this page through your local web server, ' +
+            'not by double-clicking the HTML file.'
+          );
+        }
+
+        E = window.ChessEngine;
+        AI = window.StockfishAI;
+
+        if (!E) {
+          throw new Error(
+            'chess.js did not load or does not expose window.ChessEngine.'
+          );
+        }
+
+        for (const method of [
+          'createInitialState',
+          'getLegalMoves',
+          'makeMove',
+          'getGameStatus'
+        ]) {
+          if (typeof E[method] !== 'function') {
+            throw new Error('Missing ChessEngine.' + method + '()');
+          }
+        }
+
+        if (typeof AI !== 'function' || !AI.profiles) {
+          throw new Error(
+            'stockfish-ai.js did not load or its profiles are missing.'
+          );
+        }
+
+        for (const level of [1, 2, 3]) {
+          if (!AI.profiles[level]) {
+            throw new Error('Missing AI profile ' + level);
+          }
+        }
+
+        outcome(initialState([]));
+
+        for (const opening of OPENINGS) {
+          initialState(opening);
+        }
+      }
+
+      function dispose(entry) {
+        const engines = Object.values(entry.engines);
+        entry.engines = {};
+
+        for (const engine of engines) {
+          try {
+            if (typeof engine.dispose === 'function') {
+              engine.dispose();
+            }
+          } catch (error) {
+            log('Cleanup warning: ' + error.message);
+          }
+        }
+      }
+
+      function cancelAll() {
+        for (const entry of active) {
+          if (entry.cancelPending) {
+            entry.cancelPending();
+          }
+
+          dispose(entry);
+        }
+      }
+
+      function requestMove(entry, state, level) {
+        return new Promise((resolve, reject) => {
+          let settled = false;
+          let timeout;
+
+          const finish = (error, move) => {
+            if (settled) return;
+
+            settled = true;
+            clearTimeout(timeout);
+            entry.cancelPending = null;
+
+            if (error) reject(error);
+            else resolve(move);
+          };
+
+          entry.cancelPending = () => {
+            finish(new Error('Batch stopped'));
+          };
+
+          timeout = setTimeout(() => {
+            finish(new Error(
+              'Engine did not return a move within 60 seconds.'
+            ));
+          }, MOVE_TIMEOUT_MS);
+
+          Promise.resolve()
+            .then(() => {
+              if (stopping || settled) {
+                throw new Error('Batch stopped');
+              }
+
+              const engine = entry.engines[state.turn];
+
+              if (!engine) {
+                throw new Error('Engine instance is unavailable.');
+              }
+
+              return engine.findBestMove(state, level);
+            })
+            .then(
+              move => finish(null, move),
+              error => finish(error)
+            );
+        });
+      }
+
+      async function play(spec) {
+        const begun = performance.now();
+
+        const result = {
+          game: spec.game,
+          matchup: spec.matchup,
+          white: spec.white,
+          black: spec.black,
+          opening: [...spec.opening],
+          moves: [],
+          status: 'error',
+          winnerLevel: null,
+          reason: ''
+        };
+
+        const entry = {
+          engines: {},
+          cancelPending: null
+        };
+
+        let state = null;
+
+        active.add(entry);
+
+        try {
+          if (stopping) throw new Error('Batch stopped');
+
+          state = initialState(spec.opening);
+
+          entry.engines.w = new AI({ chessEngine: E });
+          entry.engines.b = new AI({ chessEngine: E });
+
+          while (!stopping) {
+            const ended = outcome(state);
+
+            if (ended) {
+              result.status = 'completed';
+              result.reason = ended.reason;
+
+              result.winnerLevel = ended.winner === null
+                ? null
+                : ended.winner === 'w'
+                  ? spec.white
+                  : spec.black;
+
+              break;
+            }
+
+            if (
+              result.opening.length + result.moves.length >= MAX_PLIES
+            ) {
+              result.status = 'unfinished';
+              result.reason = MAX_PLIES + '-ply length limit';
+              break;
+            }
+
+            if (state.turn !== 'w' && state.turn !== 'b') {
+              throw new Error('Invalid side to move.');
+            }
+
+            const legalMoves = E.getLegalMoves(state);
+
+            if (!legalMoves.length) {
+              throw new Error(
+                'No legal moves, but the rules engine declared no result.'
+              );
+            }
+
+            const level = state.turn === 'w'
+              ? spec.white
+              : spec.black;
+
+            const move = await requestMove(entry, state, level);
+
+            if (stopping) throw new Error('Batch stopped');
+            if (!move) throw new Error('Engine returned no move.');
+
+            const uci = moveId(move);
+
+            const legal = legalMoves.find(
+              candidate => moveId(candidate) === uci
+            );
+
+            if (!legal) {
+              throw new Error('Illegal move returned: ' + uci);
+            }
+
+            const engine = entry.engines[state.turn];
+
+            if (engine && typeof engine.getStats === 'function') {
+              const stats = engine.getStats();
+
+              if (stats && stats.engineName) {
+                result.engineName = stats.engineName;
+              }
+            }
+
+            state = applyMove(state, legal);
+            result.moves.push(uci);
+
+            if (result.moves.length % 8 === 0) {
+              await sleep(0);
+            }
+          }
+
+          if (stopping && result.status === 'error') {
+            result.status = 'stopped';
+            result.reason = 'Batch stopped';
+          }
+        } catch (error) {
+          result.status = stopping ? 'stopped' : 'error';
+          result.reason = String(error.message || error);
+        } finally {
+          entry.cancelPending = null;
+
+          dispose(entry);
+          active.delete(entry);
+
+          result.elapsedMs = Math.round(performance.now() - begun);
+
+          result.plies = state
+            ? result.opening.length + result.moves.length
+            : 0;
+
+          if (state && typeof E.toFEN === 'function') {
+            try {
+              result.finalFen = E.toFEN(state);
+            } catch (error) {
+              log('Final FEN unavailable: ' + error.message);
+            }
+          }
+        }
+
+        return result;
+      }
+
+      $('count').addEventListener('input', updatePlan);
+
+      $('start').addEventListener('click', async () => {
+        if (running) return;
+
+        $('error').style.display = 'none';
+        $('error').textContent = '';
+
+        try {
+          verify();
+        } catch (error) {
+          showError(error);
+          return;
+        }
+
+        if (
+          report.games.length &&
+          !confirm(
+            'Start a new test? Save Results first if you want ' +
+            'to keep the previous batch.'
+          )
+        ) {
+          return;
+        }
+
+        const count = requestedGames();
+
+        $('count').value = count;
+        updatePlan();
+
+        const schedule = [];
+
+        for (let block = 0; block < count / 6; block++) {
+          for (const matchup of MATCHUPS) {
+            const opening = OPENINGS[block % OPENINGS.length];
+
+            schedule.push({
+              game: schedule.length + 1,
+              matchup: matchup.id,
+              white: matchup.first,
+              black: matchup.second,
+              opening
+            });
+
+            schedule.push({
+              game: schedule.length + 1,
+              matchup: matchup.id,
+              white: matchup.second,
+              black: matchup.first,
+              opening
+            });
+          }
+        }
+
+        const concurrency = Math.min(
+          PARALLEL_GAMES,
+          schedule.length
+        );
+
+        report = {
+          version: 5,
+          startedAt: new Date().toISOString(),
+          planned: count,
+          parallelGames: concurrency,
+          maxPlies: MAX_PLIES,
+          moveTimeoutMs: MOVE_TIMEOUT_MS,
+          profiles: JSON.parse(JSON.stringify(AI.profiles)),
+          displayNames: { ...NAMES },
+          reportedCpuThreads: navigator.hardwareConcurrency || null,
+          elapsedMs: 0,
+          notes:
+            'Relative AI comparison only. No human win-rate or Elo ' +
+            'calibration. Parallel searches share CPU resources. ' +
+            'Openings repeat. No fallback AI. Save before closing.',
+          games: []
+        };
+
+        running = true;
+        stopping = false;
+        fatal = false;
+        startTime = performance.now();
+
+        $('start').disabled = true;
+        $('count').disabled = true;
+        $('stop').disabled = false;
+        $('details').textContent = '';
+
+        log(concurrency + ' parallel games requested.');
+
+        log(
+          'Up to ' + (concurrency * 2) +
+          ' engine instances; only the side to move searches in each game.'
+        );
+
+        log(
+          'CPU scheduling and utilization are controlled by ' +
+          'the browser and operating system.'
+        );
+
+        log('Captain is the display name for profile 2.');
+        log(JSON.stringify(report.profiles, null, 2));
+
+        render();
+        updateStatus();
+
+        ticker = setInterval(updateStatus, 500);
+
+        let next = 0;
+
+        async function runLane(laneIndex) {
+          try {
+            await sleep(laneIndex * 40);
+
+            while (!stopping && next < schedule.length) {
+              const spec = schedule[next++];
+              const result = await play(spec);
+
+              report.games.push(result);
+
+              if (result.status === 'error') {
+                fatal = true;
+                stopping = true;
+
+                showError(
+                  'Game ' + result.game + ': ' + result.reason
+                );
+
+                cancelAll();
+              }
+
+              render();
+              updateStatus();
+            }
+          } catch (error) {
+            fatal = true;
+            stopping = true;
+
+            showError(error);
+            cancelAll();
+          }
+        }
+
+        try {
+          const settled = await Promise.allSettled(
+            Array.from(
+              { length: concurrency },
+              (_, index) => runLane(index)
+            )
+          );
+
+          for (const task of settled) {
+            if (task.status === 'rejected') {
+              fatal = true;
+              stopping = true;
+              showError(task.reason);
+            }
+          }
+        } finally {
+          report.elapsedMs = Math.round(
+            performance.now() - startTime
+          );
+
+          report.finishedAt = new Date().toISOString();
+
+          report.outcome = fatal
+            ? 'error'
+            : stopping
+              ? 'stopped'
+              : 'completed';
+
+          running = false;
+
+          clearInterval(ticker);
+          ticker = null;
+
+          cancelAll();
+
+          $('start').disabled = false;
+          $('count').disabled = false;
+          $('stop').disabled = true;
+
+          render();
+          updateStatus();
+        }
+      });
+
+      $('stop').addEventListener('click', () => {
+        if (!running) return;
+
+        stopping = true;
+        $('stop').disabled = true;
+
+        cancelAll();
+        updateStatus();
+      });
+
+      $('save').addEventListener('click', () => {
+        if (running) {
+          report.elapsedMs = Math.round(
+            performance.now() - startTime
+          );
+        }
+
+        const blob = new Blob(
+          [JSON.stringify(report, null, 2)],
+          { type: 'application/json' }
+        );
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+
+        link.href = url;
+        link.download = 'cosmic-gambit-ai-results.json';
+
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+      });
+
+      window.addEventListener('beforeunload', event => {
+        if (running) {
+          event.preventDefault();
+          event.returnValue = '';
+        }
+      });
+
+      updatePlan();
+      render();
+
+      try {
+        verify();
+        $('start').disabled = false;
+        updateStatus();
+      } catch (error) {
+        $('status').textContent = 'Setup failed.';
+        showError(error);
+      }
+    })();
+  </script>
+</body>
+</html>

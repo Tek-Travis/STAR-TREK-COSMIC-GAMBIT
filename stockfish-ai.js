@@ -2,11 +2,14 @@
  * Cosmic Gambit Stockfish adapter.
  * Requires ChessEngine and matching Stockfish.js browser assets.
  *
- * Difficulty uses Stockfish-evaluated candidate moves.
- * No Math.random() or random legal-move substitutions.
+ * Difficulty uses Stockfish's native Skill Level.
+ * Every played move comes directly from Stockfish's bestmove response.
  *
- * Target Elo values are uncalibrated design labels.
- * engineElo is null because built-in Elo limiting is not used.
+ * No custom candidate selection.
+ * No random legal-move substitutions.
+ * No claimed or calibrated Elo ratings.
+ *
+ * Stockfish's native low-skill mode includes probabilistic weakening.
  *
  * Stockfish license/source:
  * https://github.com/nmrugg/stockfish.js
@@ -18,47 +21,58 @@ const scriptBase=document.currentScript
  ?document.currentScript.src
  :document.baseURI;
 
+/*
+ * Change difficulty settings here.
+ *
+ * skill:
+ *   Native Stockfish strength control: 0 through 20.
+ *   Higher values are stronger.
+ *
+ * depth:
+ *   Search-depth ceiling.
+ *
+ * timeMs:
+ *   Approximate maximum search time, not a mandatory delay.
+ *
+ * These profiles are experimental, not Elo-calibrated.
+ */
 const PROFILES=Object.freeze({
- 1:Object.freeze({
-  name:'Cadet',
-  targetElo:333,
-  engineElo:null,
-  skill:20,
-  depth:12,
-  timeMs:1000,
-  multiPV:8,
-  preferredLossCp:120,
-  maximumLossCp:180
- }),
+1: Object.freeze({
+  name: 'Cadet',
+  difficulty: 'Easy',
+  skill: 0,
+  depth: 1,
+  timeMs: 100
+}),
 
- 2:Object.freeze({
-  name:'Commander',
-  targetElo:666,
-  engineElo:null,
-  skill:20,
-  depth:16,
-  timeMs:1500,
-  multiPV:8,
-  preferredLossCp:60,
-  maximumLossCp:90
- }),
+2: Object.freeze({
+  name: 'Captain',
+  difficulty: 'Medium',
+  skill: 1,
+  depth: 3,
+  timeMs: 200
+}),
 
- 3:Object.freeze({
-  name:'Admiral',
-  targetElo:999,
-  engineElo:null,
-  skill:20,
-  depth:20,
-  timeMs:2000,
-  multiPV:8,
-  preferredLossCp:20,
-  maximumLossCp:35
- })
+3: Object.freeze({
+  name: 'Admiral',
+  difficulty: 'Hard',
+  skill: 2,
+  depth: 4,
+  timeMs: 300
+})
+
 });
 
-// Fixed pattern, not a probability.
-// Some turns favor the best move; others allow evaluated inaccuracies.
-const QUALITY_PATTERN=Object.freeze([0,1,0,1.25,0.5]);
+const ENGINE_CONFIG=Object.freeze({
+ initialLevel:1,
+ defaultLevel:2,
+ hashMb:16,
+ threads:1,
+ multiPV:1,
+ startupTimeoutMs:30000,
+ readyTimeoutMs:10000,
+ searchTimeoutPaddingMs:15000
+});
 
 const moveId=move=>
  String.fromCharCode(97+move.from.c)+(8-move.from.r)+
@@ -91,7 +105,7 @@ class StockfishAI{
   this.lastStats=null;
 
   this.options=new Map();
-  this.analysisFrames=null;
+  this.engineName=null;
 
   this.onLog=typeof options.onLog==='function'
    ?options.onLog
@@ -106,7 +120,7 @@ class StockfishAI{
   this.worker.postMessage(text);
  }
 
- _wait(test,ms){
+ _wait(test,timeoutMs){
   if(this.waiter){
    throw Error('Overlapping Stockfish protocol requests.');
   }
@@ -115,51 +129,20 @@ class StockfishAI{
    const timer=setTimeout(()=>{
     if(this.waiter&&this.waiter.timer===timer){
      this.waiter=null;
-     reject(Error('Stockfish response timed out.'));
+
+     reject(Error(
+      'Stockfish response timed out.'
+     ));
     }
-   },ms);
+   },timeoutMs);
 
-   this.waiter={test,resolve,reject,timer};
+   this.waiter={
+    test,
+    resolve,
+    reject,
+    timer
+   };
   });
- }
-
- _recordAnalysis(line){
-  if(!this.analysisFrames||!line.startsWith('info ')){
-   return;
-  }
-
-  // Ignore bounds rather than treating them as exact evaluations.
-  if(/\b(?:lowerbound|upperbound)\b/.test(line)){
-   return;
-  }
-
-  const depth=line.match(/\bdepth (\d+)/);
-  const rank=line.match(/\bmultipv (\d+)/);
-  const score=line.match(/\bscore (cp|mate) (-?\d+)/);
-  const pv=line.match(
-   /\bpv ([a-h][1-8][a-h][1-8][qrbn]?)(?:\s|$)/
-  );
-
-  if(!depth||!score||!pv){
-   return;
-  }
-
-  const candidate={
-   depth:Number(depth[1]),
-   rank:rank?Number(rank[1]):1,
-   type:score[1],
-   score:Number(score[2]),
-   move:pv[1]
-  };
-
-  let frame=this.analysisFrames.get(candidate.depth);
-
-  if(!frame){
-   frame=new Map();
-   this.analysisFrames.set(candidate.depth,frame);
-  }
-
-  frame.set(candidate.rank,candidate);
  }
 
  _line(line){
@@ -169,6 +152,10 @@ class StockfishAI{
    }catch(error){
     console.warn(error);
    }
+  }
+
+  if(line.startsWith('id name ')){
+   this.engineName=line.slice('id name '.length);
   }
 
   if(line.startsWith('option name ')){
@@ -184,8 +171,6 @@ class StockfishAI{
    return;
   }
 
-  this._recordAnalysis(line);
-
   const waiter=this.waiter;
 
   if(waiter&&waiter.test(line)){
@@ -197,10 +182,10 @@ class StockfishAI{
 
  _reset(reason){
   this.generation++;
+
   this.ready=false;
   this.busy=false;
   this.readyPromise=null;
-  this.analysisFrames=null;
 
   if(this.worker){
    this.worker.terminate();
@@ -229,16 +214,84 @@ class StockfishAI{
  }
 
  _option(name,value){
-  if(this.options.has(name)){
-   this._send(
-    'setoption name '+name+' value '+value
+  if(!this.options.has(name)){
+   return false;
+  }
+
+  this._send(
+   'setoption name '+name+' value '+value
+  );
+
+  return true;
+ }
+
+ _validateProfile(profile){
+  if(
+   !Number.isInteger(profile.skill)||
+   !Number.isInteger(profile.depth)||
+   profile.depth<1||
+   !Number.isInteger(profile.timeMs)||
+   profile.timeMs<1
+  ){
+   throw Error(
+    'Invalid difficulty profile: '+profile.name
+   );
+  }
+
+  const specification=this.options.get('Skill Level');
+
+  if(!specification){
+   throw Error(
+    'This Stockfish build does not expose Skill Level.'
+   );
+  }
+
+  const minimum=specification.match(/\bmin (-?\d+)/);
+  const maximum=specification.match(/\bmax (-?\d+)/);
+
+  if(!minimum||!maximum){
+   throw Error(
+    'Cannot verify this engine build’s Skill Level range.'
+   );
+  }
+
+  const minSkill=Number(minimum[1]);
+  const maxSkill=Number(maximum[1]);
+
+  if(
+   profile.skill<minSkill||
+   profile.skill>maxSkill
+  ){
+   throw Error(
+    profile.name+' skill '+profile.skill+
+    ' is outside this engine’s supported range: '+
+    minSkill+' through '+maxSkill+'.'
    );
   }
  }
 
+ _applyProfile(profile){
+  this._validateProfile(profile);
+
+  // Use native skill mode, not native Elo-limiting mode.
+  this._option('UCI_LimitStrength','false');
+
+  // Read the selected profile. No hidden skill override.
+  this._option('Skill Level',profile.skill);
+
+  // Request one displayed line. Stockfish manages its own
+  // internal candidate analysis for low-skill play.
+  this._option('MultiPV',ENGINE_CONFIG.multiPV);
+ }
+
  async init(){
-  if(this.ready)return;
-  if(this.readyPromise)return this.readyPromise;
+  if(this.ready){
+   return;
+  }
+
+  if(this.readyPromise){
+   return this.readyPromise;
+  }
 
   if(!/^https?:$/.test(location.protocol)){
    throw Error(
@@ -251,22 +304,30 @@ class StockfishAI{
    typeof this.engine.toFEN!=='function'||
    typeof this.engine.getLegalMoves!=='function'
   ){
-   throw Error('Load chess.js before stockfish-ai.js.');
+   throw Error(
+    'Load chess.js before stockfish-ai.js.'
+   );
   }
 
   const token=this.generation;
 
   const task=(async()=>{
    this.options.clear();
+   this.engineName=null;
 
    const worker=new Worker(this.workerUrl);
    this.worker=worker;
 
    worker.onmessage=event=>{
-    if(this.worker!==worker)return;
+    if(this.worker!==worker){
+     return;
+    }
 
     for(const line of String(event.data).split(/\r?\n/)){
-     if(this.worker!==worker)break;
+     if(this.worker!==worker){
+      break;
+     }
+
      this._line(line.trim());
     }
    };
@@ -290,41 +351,48 @@ class StockfishAI{
 
    let response=this._wait(
     line=>line==='uciok',
-    30000
+    ENGINE_CONFIG.startupTimeoutMs
    );
 
    this._send('uci');
    await response;
 
-   if(token!==this.generation)throw abortError();
+   if(token!==this.generation){
+    throw abortError();
+   }
 
-   if(
-    !this.options.has('Skill Level')||
-    !this.options.has('MultiPV')
-   ){
+   if(!this.options.has('Skill Level')){
     throw Error(
-     'Stockfish must support Skill Level and MultiPV.'
+     'This Stockfish build does not support native skill control.'
     );
    }
 
-   this._option('Hash',16);
-   this._option('Threads',1);
+   for(const profile of Object.values(PROFILES)){
+    this._validateProfile(profile);
+   }
+
+   this._option('Threads',ENGINE_CONFIG.threads);
+   this._option('Hash',ENGINE_CONFIG.hashMb);
    this._option('Ponder','false');
    this._option('UCI_Chess960','false');
-   this._option('UCI_LimitStrength','false');
-   this._option('Skill Level',20);
+
+   this._applyProfile(
+    PROFILES[ENGINE_CONFIG.initialLevel]
+   );
 
    this._send('ucinewgame');
 
    response=this._wait(
     line=>line==='readyok',
-    30000
+    ENGINE_CONFIG.startupTimeoutMs
    );
 
    this._send('isready');
    await response;
 
-   if(token!==this.generation)throw abortError();
+   if(token!==this.generation){
+    throw abortError();
+   }
 
    this.ready=true;
   })();
@@ -346,7 +414,7 @@ class StockfishAI{
   const E=this.engine;
   const fen=E.toFEN(state);
 
-  // Preserve move history when replay verifies the current position.
+  // Preserve repetition history when replay verifies the position.
   if(
    Array.isArray(state.history)&&
    state.history.length&&
@@ -373,100 +441,21 @@ class StockfishAI{
   return 'position fen '+fen;
  }
 
- _getCandidates(expectedCount,legalById){
-  if(!this.analysisFrames)return [];
-
-  const depths=[...this.analysisFrames.keys()]
-   .sort((a,b)=>b-a);
-
-  // Use a complete set of candidates from one common depth.
-  for(const depth of depths){
-   const frame=this.analysisFrames.get(depth);
-   const candidates=[];
-   const seen=new Set();
-
-   for(let rank=1;rank<=expectedCount;rank++){
-    const candidate=frame.get(rank);
-
-    if(
-     !candidate||
-     !legalById.has(candidate.move)||
-     seen.has(candidate.move)
-    ){
-     break;
-    }
-
-    candidates.push(candidate);
-    seen.add(candidate.move);
-   }
-
-   if(candidates.length===expectedCount){
-    return candidates;
-   }
-  }
-
-  return [];
- }
-
- _selectCandidate(candidates,profile,state){
-  if(!candidates.length)return null;
-
-  const best=candidates[0];
-
-  // Preserve the leading line in mate-score positions.
-  if(best.type!=='cp'){
-   return {
-    candidate:best,
-    lossCp:null,
-    desiredLossCp:0
-   };
-  }
-
-  const ownMoveCount=(state.history||[]).filter(
-   move=>move&&move.piece&&
-    move.piece.color===state.turn
-  ).length;
-
-  const factor=QUALITY_PATTERN[
-   ownMoveCount%QUALITY_PATTERN.length
-  ];
-
-  const desiredLossCp=Math.min(
-   profile.maximumLossCp,
-   Math.round(profile.preferredLossCp*factor)
-  );
-
-  const choices=candidates
-   .filter(candidate=>candidate.type==='cp')
-   .map(candidate=>({
-    candidate,
-    lossCp:Math.max(0,best.score-candidate.score)
-   }))
-   .filter(choice=>
-    choice.lossCp<=profile.maximumLossCp
-   );
-
-  choices.sort((a,b)=>
-   Math.abs(a.lossCp-desiredLossCp)-
-    Math.abs(b.lossCp-desiredLossCp)||
-   a.lossCp-b.lossCp||
-   a.candidate.rank-b.candidate.rank
-  );
-
-  return {
-   ...choices[0],
-   desiredLossCp
-  };
- }
-
- async findBestMove(state,difficulty=2){
+ async findBestMove(
+  state,
+  difficulty=ENGINE_CONFIG.defaultLevel
+ ){
   if(this.busy){
-   throw Error('A Stockfish move request is already active.');
+   throw Error(
+    'A Stockfish move request is already active.'
+   );
   }
 
   const E=this.engine;
 
-  if(!E)throw Error('ChessEngine is missing.');
+  if(!E){
+   throw Error('ChessEngine is missing.');
+  }
 
   const snapshot=JSON.parse(JSON.stringify(state));
 
@@ -479,15 +468,22 @@ class StockfishAI{
 
   const legal=E.getLegalMoves(snapshot);
 
-  if(!legal.length)return null;
+  if(!legal.length){
+   return null;
+  }
 
-  const level=[1,2,3].includes(Number(difficulty))
-   ?Number(difficulty)
-   :2;
+  const requestedLevel=Number(difficulty);
+
+  const level=Object.prototype.hasOwnProperty.call(
+   PROFILES,
+   requestedLevel
+  )
+   ?requestedLevel
+   :ENGINE_CONFIG.defaultLevel;
 
   const profile=PROFILES[level];
   const token=this.generation;
-  const start=performance.now();
+  const started=performance.now();
 
   const legalById=new Map(
    legal.map(move=>[moveId(move),move])
@@ -498,35 +494,32 @@ class StockfishAI{
   try{
    await this.init();
 
-   if(token!==this.generation)throw abortError();
+   if(token!==this.generation){
+    throw abortError();
+   }
 
-   const multiPV=Math.min(
-    profile.multiPV,
-    legal.length
-   );
-
-   this._option('UCI_LimitStrength','false');
-   this._option('Skill Level',20);
-   this._option('MultiPV',multiPV);
+   this._applyProfile(profile);
 
    let response=this._wait(
     line=>line==='readyok',
-    10000
+    ENGINE_CONFIG.readyTimeoutMs
    );
 
    this._send('isready');
    await response;
 
-   if(token!==this.generation)throw abortError();
-
-   this.analysisFrames=new Map();
+   if(token!==this.generation){
+    throw abortError();
+   }
 
    this._send(this._position(snapshot));
 
    response=this._wait(
     line=>line.startsWith('bestmove '),
-    profile.timeMs+15000
+    profile.timeMs+ENGINE_CONFIG.searchTimeoutPaddingMs
    );
+
+   const searchStarted=performance.now();
 
    this._send(
     'go depth '+profile.depth+
@@ -535,71 +528,54 @@ class StockfishAI{
 
    const answer=await response;
 
-   if(token!==this.generation)throw abortError();
+   if(token!==this.generation){
+    throw abortError();
+   }
 
    const id=answer.split(/\s+/)[1];
+   const chosen=legalById.get(id);
 
-   if(!legalById.has(id)){
+   if(!chosen){
     throw Error(
      'Stockfish returned a move not accepted by the game: '+id
     );
    }
 
-   const candidates=this._getCandidates(
-    multiPV,
-    legalById
-   );
-
-   const selection=this._selectCandidate(
-    candidates,
-    profile,
-    snapshot
-   );
-
-   const selectedId=selection
-    ?selection.candidate.move
-    :id;
-
-   const chosen=legalById.get(selectedId);
-
+   // Play exactly the move returned by Stockfish.
    this.lastStats={
     engine:'Stockfish',
+    engineName:this.engineName,
+
     level,
     name:profile.name,
+    difficulty:profile.difficulty,
 
-    targetElo:profile.targetElo,
+    strengthMode:'native-skill',
+    skill:profile.skill,
+    analysisSkill:profile.skill,
+
+    eloLimitEnabled:false,
     engineElo:null,
     calibrated:false,
 
-    strengthMode:'evaluated-candidates',
-    analysisSkill:20,
-
     depthLimit:profile.depth,
     timeLimitMs:profile.timeMs,
-    multiPV,
-    candidatesCompared:candidates.length,
-
-    comparisonDepth:selection
-     ?selection.candidate.depth
-     :null,
-
-    desiredLossCp:selection
-     ?selection.desiredLossCp
-     :null,
-
-    estimatedLossCp:selection
-     ?selection.lossCp
-     :null,
+    requestedMultiPV:ENGINE_CONFIG.multiPV,
 
     engineMove:id,
-    move:selectedId,
-
-    selectionSource:selection
-     ?'Stockfish evaluated candidate'
-     :'Stockfish bestmove',
+    move:id,
+    selectionSource:'Stockfish bestmove',
 
     randomBranch:false,
-    elapsedMs:Math.round(performance.now()-start)
+    nativeSkillWeakening:profile.skill<20,
+
+    searchElapsedMs:Math.round(
+     performance.now()-searchStarted
+    ),
+
+    elapsedMs:Math.round(
+     performance.now()-started
+    )
    };
 
    return chosen;
@@ -611,14 +587,15 @@ class StockfishAI{
    throw error;
   }finally{
    if(token===this.generation){
-    this.analysisFrames=null;
     this.busy=false;
    }
   }
  }
 
  getStats(){
-  return this.lastStats?{...this.lastStats}:null;
+  return this.lastStats
+   ?{...this.lastStats}
+   :null;
  }
 }
 
