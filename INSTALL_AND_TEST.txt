@@ -1,0 +1,92 @@
+COSMIC GAMBIT — PEERJS 1v1 PROTOTYPE
+
+INSTALL
+1. Back up your game folder.
+2. Put multiplayer.js beside main.js and index.html.
+3. At the bottom of index.html, keep ALL existing scripts in their current order.
+   Immediately AFTER <script src="./main.js"></script>, add these two lines:
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js"></script>
+<script src="./multiplayer.js"></script>
+
+   These must be normal script tags: do not add async or defer to just these tags.
+   They belong before </body>.
+4. Serve the game over HTTP/HTTPS as usual; do not double-click index.html as file://.
+5. Reload both browsers, clearing stale cached scripts if needed.
+
+No existing JavaScript, CSS, asset, or engine file needs replacing.
+The add-on extends your existing CosmicArmadaApp prototype at runtime.
+Keep your currently working chess.js; do not load both pasted engine versions.
+PeerJS is fetched from a third-party CDN; it is not included in this archive.
+
+PLAYER EXPERIENCE
+Open the game and press ENGAGE normally. A five-digit code appears immediately
+after the turn indicator once PeerJS registers it. Share that code. Your friend
+enters it in the adjacent input and presses Connect. The player being joined is
+White; the joining friend is Black. An incoming connection starts a NEW match
+and discards the current unsaved single-player position. Anyone who knows or
+guesses the code can attempt to connect; this prototype has no authentication.
+Only one opponent is accepted. Connect changes to Leave while connecting/playing.
+Leave returns to a fresh single-player game. Codes are temporary, not accounts.
+
+BEHAVIOR
+Stockfish and its custom fallback are suppressed during multiplayer; pending
+searches are canceled. Host validates each move using the existing ChessEngine.
+Each side checks the expected position. Moves wait until BOTH animation
+callbacks finish. Skip and Battles OFF remain local visual preferences: using
+either does not release the next turn until the other player is also ready.
+Fleet choices are synchronized and each side may change only its own fleet.
+White uses the existing PLAYER selector; Black uses the existing ENEMY selector.
+Board orientation remains unchanged, including for Black.
+Undo, Save, Load, New Game and end-screen replay buttons are disabled in MP.
+Use Leave and reconnect for another match. No rematch, reconnect/resume, draw
+negotiation or resignation protocol is provided in this initial implementation.
+Existing automatic engine game endings remain in use. Score retains the game's
+existing White-captures scoring convention; multiplayer win/loss uses your side.
+Animations use local randomness; choreography may differ but captures agree.
+An animation/handshake acknowledgement taking over 45 seconds pauses the match;
+background tabs can cause this. Return to single-player with Leave and reconnect.
+Connection errors appear in the turn indicator where applicable and in the
+controls' hover tooltips and browser console. Invalid input guidance is in tooltip.
+
+TOP BAR
+The new controls use existing button sizing, a 49px input and inline code.
+No second row or extra status row is added. The add-on prevents header/group
+wrapping and hides the horizontal scrollbar. On a window too narrow for ALL
+existing controls plus multiplayer, the header scrolls horizontally instead of
+becoming taller. Scroll/trackpad or swipe the header to reach clipped controls.
+The board, existing stylesheet, artwork and audio files are not replaced.
+
+INFRASTRUCTURE / LIMITS
+Uses public PeerServer Cloud signaling via PeerJS defaults, with no backend for
+you to deploy. This is third-party infrastructure, not infrastructure-free.
+No TURN credentials are supplied. Some network pairs will fail to connect.
+An optional window.COSMIC_PEER_OPTIONS object, defined BEFORE multiplayer.js,
+is forwarded to new Peer(id, options); use it for your own PeerServer or ICE/TURN
+configuration later. Do not embed long-lived private TURN credentials publicly.
+A five-digit code is a convenience invitation, not a password. Casual friends-only
+prototype, not cheat-resistant. Service availability and live connectivity have
+NOT been verified in this environment.
+
+TEST BEFORE SHARING
+1. Open game in two different browser profiles; confirm different five-digit codes.
+2. Enter A's code in B. Verify a fresh game, A=White and B=Black; no AI move.
+3. Alternate moves from both sides; verify off-turn clicks do nothing.
+4. Capture with battles ON. Skip on one browser only; next turn must wait for both.
+5. Repeat with Battles OFF on one browser. Verify identical board after capture.
+6. Test castling, en passant and all promotion choices, especially as Black.
+7. Change each player's own fleet; verify both displays agree.
+8. Test checkmate/draw screens, disabled local state buttons, and Leave.
+9. Close one browser during a move; confirm the remaining match is frozen.
+10. Try a third browser joining an occupied player; it must not enter the match.
+11. Test with your friend on a different network; same-device success alone is not
+    evidence that internet connectivity works for every network pair.
+12. Confirm the top bar remains one row at your normal window size and narrow sizes.
+
+TESTS ACTUALLY RUN DURING BUILD
+- Node.js syntax check: passed.
+- 12 assertions in a simulated protocol test: passed (initial turn assignment,
+  bidirectional moves, both animation-completion orders, revision tracking,
+  wrong-turn/out-of-order rejection, and disconnected play lock).
+- The simulated test uses a mock move engine/controller, not the actual browser,
+  chess engine or PeerJS transport. No live browser or network test was run.
